@@ -7,6 +7,49 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  /* ── 법령 분석 전용 스타일 */
+  .law-search-bar { display: flex; gap: 10px; margin-bottom: 18px; }
+  .law-search-bar input { flex: 1; border: 1.5px solid var(--border); border-radius: 6px; padding: 10px 14px; font-size: 14px; font-family: inherit; }
+  .law-search-bar input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(46,123,232,.12); }
+  .btn-search {
+    padding: 10px 22px; background: linear-gradient(135deg, var(--primary), var(--accent));
+    color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; transition: opacity .15s;
+  }
+  .btn-search:hover { opacity: .9; }
+  .btn-search:disabled { opacity: .5; cursor: not-allowed; }
+  .law-api-notice { font-size: 12px; color: #b45309; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; display: none; }
+  .law-api-notice.show { display: block; }
+  .law-api-row { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
+  .law-api-row input { flex: 1; border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: monospace; }
+  .law-results { display: flex; flex-direction: column; gap: 18px; margin-top: 8px; }
+  .law-section { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .law-section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; background: #f0f4fb; cursor: pointer; user-select: none;
+    font-weight: 700; font-size: 14px; color: var(--primary);
+    border-bottom: 1px solid var(--border);
+  }
+  .law-section-header .badge {
+    background: var(--accent); color: #fff; border-radius: 12px;
+    padding: 2px 10px; font-size: 12px; font-weight: 600;
+  }
+  .law-section-header .badge.zero { background: #94a3b8; }
+  .law-section-body { padding: 0; }
+  .law-item { padding: 12px 16px; border-bottom: 1px solid #eef1f8; font-size: 13px; }
+  .law-item:last-child { border-bottom: none; }
+  .law-item-title { font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .law-item-title a { color: var(--primary); text-decoration: none; }
+  .law-item-title a:hover { text-decoration: underline; }
+  .law-item-meta { color: var(--sub); font-size: 12px; display: flex; flex-wrap: wrap; gap: 10px; }
+  .law-item-excerpt { margin-top: 6px; color: #374151; font-size: 12px; line-height: 1.6; border-left: 3px solid #d1d5db; padding-left: 10px; }
+  .law-empty { padding: 14px 16px; color: var(--sub); font-size: 13px; }
+  .law-loading { text-align: center; padding: 32px; color: var(--sub); font-size: 14px; }
+  .spinner { display: inline-block; width: 22px; height: 22px; border: 3px solid #e0e7ff; border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; margin-right: 8px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .collapsible { display: block; }
+  .collapsible.collapsed { display: none; }
+
   :root {
     --primary:  #1a4fa0;
     --accent:   #2e7be8;
@@ -251,6 +294,7 @@
     <button class="tab-btn"        onclick="switchTab('plan')">계획 보고</button>
     <button class="tab-btn"        onclick="switchTab('inspection')">현장점검 보고</button>
     <button class="tab-btn"        onclick="switchTab('seminar')">세미나/행사 개최 계획</button>
+    <button class="tab-btn"        onclick="switchTab('lawsearch')">⚖️ 법령 분석</button>
   </div>
 
   <!-- ══════════════════════════════════════
@@ -531,12 +575,43 @@
     </div>
   </div>
 
+  <!-- ══════════════════════════════════════
+       탭 5: 법령 분석
+  ══════════════════════════════════════ -->
+  <div class="tab-panel" id="panel-lawsearch">
+    <div class="card">
+      <h2>⚖️ 법령 종합 분석</h2>
+      <p style="font-size:13px;color:var(--sub);margin-bottom:16px;">
+        법령 · 훈령 · 예규 · 고시 · 지침 · 판례 · 해석례 · 행정심판례를 한 번에 검색합니다.
+        (<a href="https://open.law.go.kr/LSO/openApi/guideResult.do" target="_blank" style="color:var(--accent);">법제처 Open API</a> 키 필요)
+      </p>
+
+      <div id="law-api-notice" class="law-api-notice">
+        ⚠️ 서버에 API 키가 설정되어 있지 않습니다. 아래에 직접 입력하거나,
+        서버의 <code>LAW_OC</code> 환경변수를 설정하세요.
+      </div>
+
+      <div class="law-api-row">
+        <span style="font-size:13px;font-weight:600;white-space:nowrap;color:var(--sub);">API 키</span>
+        <input type="text" id="law-api-key" placeholder="법제처 Open API 키 (서버에 설정된 경우 비워두세요)" autocomplete="off">
+      </div>
+
+      <div class="law-search-bar">
+        <input type="text" id="law-query" placeholder="예) 크레인 철거 낙하물 방지  /  산업안전보건법 옥외광고물  /  공작물 철거 안전조치"
+               onkeydown="if(event.key==='Enter') doLawSearch()">
+        <button class="btn-search" id="btn-law-search" onclick="doLawSearch()">검색</button>
+      </div>
+
+      <div id="law-results-area"></div>
+    </div>
+  </div>
+
 </main>
 
 <div id="toast"></div>
 
 <script>
-  const TAB_IDS = ['review', 'plan', 'inspection', 'seminar'];
+  const TAB_IDS = ['review', 'plan', 'inspection', 'seminar', 'lawsearch'];
   const tabBtns = document.querySelectorAll('.tab-btn');
 
   // ── 탭 전환
@@ -545,6 +620,144 @@
       document.getElementById('panel-' + t).classList.toggle('active', t === id);
       tabBtns[i].classList.toggle('active', t === id);
     });
+    if (id === 'lawsearch') checkLawApiKey();
+  }
+
+  // ── 법령 분석: API 키 상태 확인
+  async function checkLawApiKey() {
+    try {
+      const res = await fetch('/law-api-key-status');
+      const { configured } = await res.json();
+      document.getElementById('law-api-notice').classList.toggle('show', !configured);
+    } catch { /* 무시 */ }
+  }
+
+  // ── 법령 분석: 검색 실행
+  async function doLawSearch() {
+    const query   = document.getElementById('law-query').value.trim();
+    const apiKey  = document.getElementById('law-api-key').value.trim();
+    const area    = document.getElementById('law-results-area');
+    const btn     = document.getElementById('btn-law-search');
+    if (!query) { showToast('검색어를 입력하세요.', 'error'); return; }
+
+    btn.disabled = true;
+    area.innerHTML = '<div class="law-loading"><span class="spinner"></span>법령·판례·해석례 검색 중...</div>';
+
+    try {
+      const res = await fetch('/law-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, api_key: apiKey || undefined }),
+      });
+      const data = await res.json();
+      if (data.error) { area.innerHTML = `<div class="law-empty" style="color:#b91c1c;">${data.error}</div>`; return; }
+      renderLawResults(data);
+    } catch (e) {
+      area.innerHTML = `<div class="law-empty" style="color:#b91c1c;">네트워크 오류: ${e.message}</div>`;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ── 법령 분석: 결과 렌더링
+  const LAW_SECTION_ORDER = ['법령', '훈령', '예규', '고시', '지침', '판례', '해석례', '행정심판'];
+  const LAW_SECTION_ICONS = {
+    '법령': '📜', '훈령': '📋', '예규': '📂', '고시': '📣',
+    '지침': '📌', '판례': '⚖️', '해석례': '💬', '행정심판': '🏛',
+  };
+
+  function renderLawResults(data) {
+    const area = document.getElementById('law-results-area');
+    const { query, results } = data;
+    let totalFound = 0;
+
+    const sections = LAW_SECTION_ORDER.map(key => {
+      const r = results[key] || {};
+      const cnt = parseInt(r.total || '0', 10);
+      totalFound += cnt;
+      return { key, r, cnt };
+    });
+
+    let html = `<div style="font-size:13px;color:var(--sub);margin-bottom:12px;">
+      "<strong style="color:var(--text)">${escHtml(query)}</strong>" 검색 결과 —
+      총 ${totalFound.toLocaleString()}건
+    </div><div class="law-results">`;
+
+    for (const { key, r, cnt } of sections) {
+      const icon = LAW_SECTION_ICONS[key] || '📄';
+      const badgeClass = cnt === 0 ? 'badge zero' : 'badge';
+      const sectionId  = 'ls-' + key;
+
+      html += `<div class="law-section">
+        <div class="law-section-header" onclick="toggleSection('${sectionId}')">
+          <span>${icon} ${key}</span>
+          <span class="${badgeClass}">${cnt > 0 ? cnt.toLocaleString() + '건' : '없음'}</span>
+        </div>
+        <div class="law-section-body collapsible" id="${sectionId}">`;
+
+      if (r.error) {
+        html += `<div class="law-empty" style="color:#b91c1c;">오류: ${escHtml(r.error)}</div>`;
+      } else if (!r.items || r.items.length === 0) {
+        html += `<div class="law-empty">검색 결과가 없습니다.</div>`;
+      } else {
+        for (const item of r.items) {
+          html += renderLawItem(key, item);
+        }
+        if (cnt > r.items.length) {
+          html += `<div class="law-empty" style="color:var(--accent);">+ ${(cnt - r.items.length).toLocaleString()}건 더 있습니다 (법제처에서 확인)</div>`;
+        }
+      }
+
+      html += `</div></div>`;
+    }
+
+    html += '</div>';
+    area.innerHTML = html;
+  }
+
+  function renderLawItem(category, item) {
+    let title = '', meta = [], excerpt = '', link = '';
+
+    if (category === '법령') {
+      title = item['법령명'] || item['법령명한글'] || '';
+      link  = item['법령상세링크'] || '';
+      meta  = [item['법령구분명'], item['소관부처명'], item['시행일자'] ? '시행 ' + item['시행일자'] : ''].filter(Boolean);
+    } else if (['훈령','예규','고시','지침'].includes(category)) {
+      title = item['행정규칙명'] || '';
+      link  = item['행정규칙상세링크'] || '';
+      meta  = [item['행정규칙종류'], item['발령기관명'], item['발령일자'] ? '발령 ' + item['발령일자'] : ''].filter(Boolean);
+    } else if (category === '판례') {
+      title = item['사건명'] || '';
+      link  = item['판례상세링크'] || '';
+      meta  = [item['법원명'], item['사건번호'], item['선고일자'] ? '선고 ' + item['선고일자'] : '', item['판결유형']].filter(Boolean);
+    } else if (category === '해석례') {
+      title = item['안건명'] || '';
+      link  = item['법령해석례상세링크'] || '';
+      meta  = [item['회신기관명'], item['안건번호'], item['회신일자'] ? '회신 ' + item['회신일자'] : '', item['소관부처명']].filter(Boolean);
+      excerpt = (item['질의요지'] || '').slice(0, 120);
+    } else if (category === '행정심판') {
+      title = item['사건명'] || '';
+      link  = item['행정심판례상세링크'] || '';
+      meta  = [item['재결청'], item['사건번호'], item['의결일자'] ? '의결 ' + item['의결일자'] : '', item['재결구분명']].filter(Boolean);
+    }
+
+    const titleHtml = link
+      ? `<a href="${escHtml(link)}" target="_blank">${escHtml(title) || '(제목 없음)'}</a>`
+      : escHtml(title) || '(제목 없음)';
+
+    return `<div class="law-item">
+      <div class="law-item-title">${titleHtml}</div>
+      ${meta.length ? `<div class="law-item-meta">${meta.map(escHtml).join(' · ')}</div>` : ''}
+      ${excerpt ? `<div class="law-item-excerpt">${escHtml(excerpt)}…</div>` : ''}
+    </div>`;
+  }
+
+  function toggleSection(id) {
+    document.getElementById(id).classList.toggle('collapsed');
+  }
+
+  function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   // ── 검토 보고: 항목 동적 추가/삭제
