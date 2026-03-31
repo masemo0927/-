@@ -21,7 +21,18 @@ except ImportError:
 
 from flask import Flask, render_template, request, send_file, jsonify
 import io
+import json
+import os
 from hwpx_generator import generate_hwpx, make_filename
+
+# 저장 경로 설정 로드
+_cfg_path = os.path.join(os.path.dirname(__file__), 'config.json')
+try:
+    with open(_cfg_path, encoding='utf-8') as _f:
+        _cfg = json.load(_f)
+    OUTPUT_DIR = os.path.expanduser(_cfg.get('output_dir', ''))
+except Exception:
+    OUTPUT_DIR = ''
 
 app = Flask(__name__)
 
@@ -62,6 +73,16 @@ def generate(report_type):
         return jsonify({'error': str(e)}), 500
 
     filename = make_filename(report_type, data)
+
+    # 설정된 저장 경로에 자동 저장
+    if OUTPUT_DIR:
+        try:
+            os.makedirs(OUTPUT_DIR, exist_ok=True)
+            save_path = os.path.join(OUTPUT_DIR, filename)
+            with open(save_path, 'wb') as f:
+                f.write(hwpx_bytes)
+        except Exception:
+            pass
 
     return send_file(
         io.BytesIO(hwpx_bytes),
