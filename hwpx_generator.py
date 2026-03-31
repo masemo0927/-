@@ -303,9 +303,21 @@ def build_plan_report(data):
     b.date_line(f"{data.get('date', '')}  {data.get('team', '')} {data.get('person', '')} ☎ {data.get('phone', '')}")
     b.empty()
 
+    if data.get('background'):
+        b.section("□ 추진배경")
+        for line in _split_lines(data['background']):
+            b.item(f"○ {line}")
+        b.empty()
+
     if data.get('purpose'):
         b.section("□ 추진목적")
         for line in _split_lines(data['purpose']):
+            b.item(f"○ {line}")
+        b.empty()
+
+    if data.get('current_status'):
+        b.section("□ 현황")
+        for line in _split_lines(data['current_status']):
             b.item(f"○ {line}")
         b.empty()
 
@@ -321,6 +333,12 @@ def build_plan_report(data):
     if data.get('budget'):
         b.item(f"○ 예산 : {data['budget']}")
     b.empty()
+
+    if data.get('effect'):
+        b.section("□ 기대효과")
+        for line in _split_lines(data['effect']):
+            b.item(f"○ {line}")
+        b.empty()
 
     if data.get('schedule'):
         b.section("□ 향후일정")
