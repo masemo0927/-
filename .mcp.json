@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "korean-law": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/home/user/-/node_modules/korean-law-mcp/build/index.js"],
+      "env": {
+        "LAW_OC": "ryuseungin"
+      }
+    }
+  }
+}
