@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 .env
+.mcp.json
 *.egg-info/
 dist/
 build/
