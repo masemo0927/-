@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>세종시설관리공단 보고서 자동화 시스템</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --primary:  #1a4fa0;
+    --accent:   #2e7be8;
+    --bg:       #f4f6fb;
+    --card:     #ffffff;
+    --border:   #d0d8e8;
+    --text:     #1e2842;
+    --sub:      #5a6a8a;
+    --radius:   10px;
+    --shadow:   0 2px 12px rgba(30,40,66,.10);
+  }
+
+  body {
+    font-family: '맑은 고딕', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── 헤더 */
+  header {
+    background: linear-gradient(135deg, var(--primary) 0%, #123b80 100%);
+    color: #fff;
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  }
+  header .logo { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+  header .sub  { font-size: 13px; opacity: .75; margin-top: 2px; }
+
+  /* ── 본문 */
+  main { max-width: 900px; margin: 32px auto; padding: 0 16px; }
+
+  /* ── 탭 */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .tab-btn {
+    padding: 10px 22px;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--sub);
+    cursor: pointer;
+    border-radius: var(--radius) var(--radius) 0 0;
+    transition: background .15s, color .15s;
+    position: relative;
+    top: 2px;
+  }
+  .tab-btn:hover  { background: #e8edf8; color: var(--primary); }
+  .tab-btn.active {
+    background: var(--card);
+    color: var(--primary);
+    border: 2px solid var(--border);
+    border-bottom-color: var(--card);
+  }
+
+  /* ── 탭 패널 */
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── 카드 */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px 32px;
+    box-shadow: var(--shadow);
+  }
+  .card h2 {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 22px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ── 폼 레이아웃 */
+  .row { display: flex; gap: 16px; margin-bottom: 14px; }
+  .row.triple { }
+  .field {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+  .field label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--sub);
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+  }
+  .field input,
+  .field textarea,
+  .field select {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text);
+    background: #fafbfd;
+    transition: border-color .15s, box-shadow .15s;
+    resize: vertical;
+  }
+  .field input:focus,
+  .field textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(46,123,232,.12);
+    background: #fff;
+  }
+  .field textarea { min-height: 80px; }
+
+  /* ── 항목 동적 추가 (검토 보고) */
+  .items-wrapper { margin-bottom: 14px; }
+  .item-group {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    background: #f9fafd;
+    position: relative;
+  }
+  .item-group .row { margin-bottom: 0; }
+  .btn-remove {
+    position: absolute;
+    top: 10px; right: 10px;
+    background: #fce8e8;
+    border: none;
+    border-radius: 50%;
+    width: 26px; height: 26px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #c0392b;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+    transition: background .15s;
+  }
+  .btn-remove:hover { background: #f8d7d7; }
+  .btn-add {
+    background: #e8f0fe;
+    border: 1px dashed var(--accent);
+    border-radius: 6px;
+    padding: 9px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .btn-add:hover { background: #d6e4fd; }
+
+  /* ── 생성 버튼 */
+  .btn-generate {
+    margin-top: 22px;
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: .3px;
+    transition: opacity .15s, transform .1s;
+    box-shadow: 0 3px 10px rgba(26,79,160,.25);
+  }
+  .btn-generate:hover   { opacity: .93; }
+  .btn-generate:active  { transform: scale(.98); }
+  .btn-generate:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+  }
+
+  /* ── 알림 토스트 */
+  #toast {
+    position: fixed;
+    bottom: 28px; right: 28px;
+    background: #1e2842;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity .3s, transform .3s;
+    pointer-events: none;
+    z-index: 9999;
+    max-width: 320px;
+  }
+  #toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  #toast.error { background: #b91c1c; }
+  #toast.success { background: #166534; }
+
+  /* ── 섹션 구분 제목 */
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 16px 0 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #e0e7f3;
+  }
+
+  @media (max-width: 600px) {
+    .row { flex-direction: column; }
+    .tab-btn { padding: 8px 12px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">🏛 세종시설관리공단</div>
+    <div class="sub">보고서 자동화 시스템 — HWPX 파일 즉시 생성</div>
+  </div>
+</header>
+
+<main>
+  <!-- ══ 탭 버튼 ══ -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('review')">검토 보고</button>
+    <button class="tab-btn"        onclick="switchTab('plan')">계획 보고</button>
+    <button class="tab-btn"        onclick="switchTab('inspection')">현장점검 보고</button>
+    <button class="tab-btn"        onclick="switchTab('seminar')">세미나/행사 개최 계획</button>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       탭 1: 검토 보고
+  ══════════════════════════════════════ -->
+  <div class="tab-panel active" id="panel-review">
+    <div class="card">
+      <h2>📋 검토 보고</h2>
+      <form id="form-review" onsubmit="submitForm(event,'review')">
+
+        <div class="section-label">기본 정보</div>
+        <div class="row">
+          <div class="field" style="flex:3">
+            <label>보고서 제목 *</label>
+            <input type="text" name="title" placeholder="예) ○○○ 검토 보고" required>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>날짜</label>
+            <input type="text" name="date" placeholder="예) '25.06.10.(화) 14:00">
+          </div>
+          <div class="field">
+            <label>팀명</label>
+            <input type="text" name="team" placeholder="예) 시설관리팀">
+          </div>
+          <div class="field">
+            <label>담당자</label>
+            <input type="text" name="person" placeholder="예) 홍길동">
+          </div>
+          <div class="field">
+            <label>전화</label>
+            <input type="text" name="phone" placeholder="예) 044-1234-5678">
+          </div>
+        </div>
+
+        <div class="section-label">검토배경</div>
+        <div class="row">
+          <div class="field">
+            <label>검토배경 (줄바꿈으로 항목 구분)</label>
+            <textarea name="background" placeholder="검토 배경을 입력하세요.&#10;줄바꿈 시 다음 항목으로 분리됩니다."></textarea>
+          </div>
+        </div>
+
+        <div class="section-label">검토결과 항목 <small style="font-weight:400;color:var(--sub);margin-left:6px;">항목 단위로 추가</small></div>
+        <div class="items-wrapper" id="items-review"></div>
+        <button type="button" class="btn-add" onclick="addItem('review')">+ 항목 추가</button>
+
+        <div class="section-label">결론</div>
+        <div class="row">
+          <div class="field">
+            <label>결론 (줄바꿈으로 항목 구분)</label>
+            <textarea name="conclusion" placeholder="결론을 입력하세요."></textarea>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-generate">📥 HWPX 생성 및 다운로드</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       탭 2: 계획 보고
+  ══════════════════════════════════════ -->
+  <div class="tab-panel" id="panel-plan">
+    <div class="card">
+      <h2>📅 계획 보고</h2>
+      <form id="form-plan" onsubmit="submitForm(event,'plan')">
+
+        <div class="section-label">기본 정보</div>
+        <div class="row">
+          <div class="field" style="flex:3">
+            <label>보고서 제목 *</label>
+            <input type="text" name="title" placeholder="예) ○○○ 추진 계획 보고" required>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>날짜</label>
+            <input type="text" name="date" placeholder="예) '25.06.10.(화) 14:00">
+          </div>
+          <div class="field">
+            <label>팀명</label>
+            <input type="text" name="team" placeholder="예) 시설관리팀">
+          </div>
+          <div class="field">
+            <label>담당자</label>
+            <input type="text" name="person" placeholder="예) 홍길동">
+          </div>
+          <div class="field">
+            <label>전화</label>
+            <input type="text" name="phone" placeholder="예) 044-1234-5678">
+          </div>
+        </div>
+
+        <div class="section-label">추진목적</div>
+        <div class="row">
+          <div class="field">
+            <label>목적 (줄바꿈으로 항목 구분)</label>
+            <textarea name="purpose" placeholder="추진 목적을 입력하세요."></textarea>
+          </div>
+        </div>
+
+        <div class="section-label">추진계획</div>
+        <div class="row">
+          <div class="field">
+            <label>기간</label>
+            <input type="text" name="period" placeholder="예) 2025. 7. 1. ~ 7. 31.">
+          </div>
+          <div class="field">
+            <label>대상</label>
+            <input type="text" name="target" placeholder="예) 공단 전 직원">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>내용 (줄바꿈으로 세부항목 구분)</label>
+            <textarea name="content" placeholder="주요 추진 내용을 입력하세요.&#10;줄바꿈 시 세부항목(-)으로 분리됩니다."></textarea>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>예산</label>
+            <input type="text" name="budget" placeholder="예) 5,000,000원">
+          </div>
+        </div>
+
+        <div class="section-label">향후일정</div>
+        <div class="row">
+          <div class="field">
+            <label>향후일정 (줄바꿈으로 항목 구분)</label>
+            <textarea name="schedule" placeholder="향후 일정을 입력하세요."></textarea>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-generate">📥 HWPX 생성 및 다운로드</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       탭 3: 현장점검 보고
+  ══════════════════════════════════════ -->
+  <div class="tab-panel" id="panel-inspection">
+    <div class="card">
+      <h2>🔍 현장점검 보고</h2>
+      <form id="form-inspection" onsubmit="submitForm(event,'inspection')">
+
+        <div class="section-label">기본 정보</div>
+        <div class="row">
+          <div class="field" style="flex:3">
+            <label>보고서 제목 *</label>
+            <input type="text" name="title" placeholder="예) ○○○ 현장점검 결과 보고" required>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>날짜</label>
+            <input type="text" name="date" placeholder="예) '25.06.10.(화) 14:00">
+          </div>
+          <div class="field">
+            <label>팀명</label>
+            <input type="text" name="team" placeholder="예) 시설관리팀">
+          </div>
+          <div class="field">
+            <label>담당자</label>
+            <input type="text" name="person" placeholder="예) 홍길동">
+          </div>
+          <div class="field">
+            <label>전화</label>
+            <input type="text" name="phone" placeholder="예) 044-1234-5678">
+          </div>
+        </div>
+
+        <div class="section-label">점검 개요</div>
+        <div class="row">
+          <div class="field">
+            <label>점검일시</label>
+            <input type="text" name="inspection_date" placeholder="예) 2025. 6. 5.(목) 10:00~12:00">
+          </div>
+          <div class="field">
+            <label>점검장소</label>
+            <input type="text" name="location" placeholder="예) 세종 ○○ 공원 일원">
+          </div>
+        </div>
+
+        <div class="section-label">점검결과</div>
+        <div class="row">
+          <div class="field">
+            <label>점검결과 (줄바꿈으로 항목 구분)</label>
+            <textarea name="results" placeholder="점검 결과를 입력하세요."></textarea>
+          </div>
+        </div>
+
+        <div class="section-label">조치사항</div>
+        <div class="row">
+          <div class="field">
+            <label>조치사항 (줄바꿈으로 항목 구분)</label>
+            <textarea name="actions" placeholder="조치 사항을 입력하세요."></textarea>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-generate">📥 HWPX 생성 및 다운로드</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       탭 4: 세미나/행사 개최 계획
+  ══════════════════════════════════════ -->
+  <div class="tab-panel" id="panel-seminar">
+    <div class="card">
+      <h2>🎤 세미나/행사 개최 계획</h2>
+      <form id="form-seminar" onsubmit="submitForm(event,'seminar')">
+
+        <div class="section-label">기본 정보</div>
+        <div class="row">
+          <div class="field" style="flex:3">
+            <label>보고서 제목 *</label>
+            <input type="text" name="title" placeholder="예) ○○○ 세미나 개최 계획" required>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>날짜</label>
+            <input type="text" name="date" placeholder="예) '25.06.10.(화) 14:00">
+          </div>
+          <div class="field">
+            <label>팀명</label>
+            <input type="text" name="team" placeholder="예) 교육운영팀">
+          </div>
+          <div class="field">
+            <label>담당자</label>
+            <input type="text" name="person" placeholder="예) 홍길동">
+          </div>
+          <div class="field">
+            <label>전화</label>
+            <input type="text" name="phone" placeholder="예) 044-1234-5678">
+          </div>
+        </div>
+
+        <div class="section-label">행사 개요</div>
+        <div class="row">
+          <div class="field">
+            <label>행사명</label>
+            <input type="text" name="event_name" placeholder="예) 2025년 공단 직원 역량강화 세미나">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>일시</label>
+            <input type="text" name="event_date" placeholder="예) 2025. 7. 10.(목) 14:00~17:00">
+          </div>
+          <div class="field">
+            <label>장소</label>
+            <input type="text" name="venue" placeholder="예) 세종시 ○○ 컨벤션센터 대회의실">
+          </div>
+        </div>
+
+        <div class="section-label">주요내용</div>
+        <div class="row">
+          <div class="field">
+            <label>주요내용 (줄바꿈으로 항목 구분)</label>
+            <textarea name="main_content" placeholder="주요 내용을 입력하세요."></textarea>
+          </div>
+        </div>
+
+        <div class="section-label">예산</div>
+        <div class="row">
+          <div class="field">
+            <label>예산 (줄바꿈으로 항목 구분)</label>
+            <textarea name="budget" placeholder="예) 강사료 500,000원&#10;행사장 임차료 300,000원"></textarea>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-generate">📥 HWPX 생성 및 다운로드</button>
+      </form>
+    </div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+  const TAB_IDS = ['review', 'plan', 'inspection', 'seminar'];
+  const tabBtns = document.querySelectorAll('.tab-btn');
+
+  // ── 탭 전환
+  function switchTab(id) {
+    TAB_IDS.forEach((t, i) => {
+      document.getElementById('panel-' + t).classList.toggle('active', t === id);
+      tabBtns[i].classList.toggle('active', t === id);
+    });
+  }
+
+  // ── 검토 보고: 항목 동적 추가/삭제
+  let itemCount = { review: 0 };
+
+  function addItem(type) {
+    const wrapper = document.getElementById('items-' + type);
+    const idx = itemCount[type]++;
+    const div = document.createElement('div');
+    div.className = 'item-group';
+    div.id = `item-${type}-${idx}`;
+    div.innerHTML = `
+      <button type="button" class="btn-remove" onclick="removeItem('${type}',${idx})">✕</button>
+      <div class="row">
+        <div class="field">
+          <label>항목 제목</label>
+          <input type="text" name="item_title_${idx}" placeholder="항목 소제목 (○ 앞에 표시)">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>항목 내용 (줄바꿈으로 세부항목 구분)</label>
+          <textarea name="item_content_${idx}" placeholder="세부 내용을 입력하세요. 줄바꿈 시 - 항목으로 분리됩니다."></textarea>
+        </div>
+      </div>`;
+    wrapper.appendChild(div);
+  }
+
+  function removeItem(type, idx) {
+    const el = document.getElementById(`item-${type}-${idx}`);
+    if (el) el.remove();
+  }
+
+  // ── 폼 제출 → fetch → blob 다운로드
+  async function submitForm(e, type) {
+    e.preventDefault();
+    const form = e.target;
+    const btn  = form.querySelector('.btn-generate');
+    btn.disabled = true;
+    btn.textContent = '생성 중...';
+
+    const fd = new FormData(form);
+
+    try {
+      const res = await fetch(`/generate/${type}`, {
+        method: 'POST',
+        body: fd,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: '서버 오류가 발생했습니다.' }));
+        showToast(err.error || '오류 발생', 'error');
+        return;
+      }
+
+      // Content-Disposition에서 파일명 추출
+      const disp = res.headers.get('Content-Disposition') || '';
+      let filename = 'report.hwpx';
+      const m = disp.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i);
+      if (m) filename = decodeURIComponent(m[1]);
+
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      showToast('✅ ' + filename + ' 다운로드 완료', 'success');
+    } catch (err) {
+      showToast('네트워크 오류: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '📥 HWPX 생성 및 다운로드';
+    }
+  }
+
+  // ── 토스트 메시지
+  let toastTimer;
+  function showToast(msg, type = '') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'show ' + type;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = ''; }, 4000);
+  }
+</script>
+</body>
+</html>
