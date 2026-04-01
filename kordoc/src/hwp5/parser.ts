@@ -1,0 +1,473 @@
+/** HWP 5.x 바이너리 파서 — OLE2 컨테이너 → 섹션 → Markdown */
+
+import {
+  readRecords, decompressStream, parseFileHeader, extractText, parseDocInfo,
+  TAG_PARA_HEADER, TAG_PARA_TEXT, TAG_CHAR_SHAPE, TAG_CTRL_HEADER, TAG_LIST_HEADER, TAG_TABLE,
+  FLAG_COMPRESSED, FLAG_ENCRYPTED, FLAG_DRM,
+  type HwpRecord, type HwpDocInfo, type HwpCharShape,
+} from "./record.js"
+import { buildTable, blocksToMarkdown, MAX_COLS, MAX_ROWS } from "../table/builder.js"
+import type { CellContext, IRBlock, DocumentMetadata, InternalParseResult, ParseOptions, ParseWarning, OutlineItem, InlineStyle } from "../types.js"
+import { KordocError } from "../utils.js"
+import { parsePageRange } from "../page-range.js"
+
+import { createRequire } from "module"
+const require = createRequire(import.meta.url)
+const CFB: CfbModule = require("cfb")
+
+interface CfbEntry { name?: string; content?: Buffer | Uint8Array }
+interface CfbContainer { FileIndex?: CfbEntry[] }
+interface CfbModule {
+  parse(data: Buffer): CfbContainer
+  find(cfb: CfbContainer, path: string): CfbEntry | null
+}
+
+/** 최대 섹션 수 — 비정상 파일에 의한 무한 루프 방지 */
+const MAX_SECTIONS = 100
+/** 누적 압축 해제 최대 크기 (100MB) */
+const MAX_TOTAL_DECOMPRESS = 100 * 1024 * 1024
+
+export function parseHwp5Document(buffer: Buffer, options?: ParseOptions): InternalParseResult {
+  const cfb = CFB.parse(buffer)
+
+  const headerEntry = CFB.find(cfb, "/FileHeader")
+  if (!headerEntry?.content) throw new KordocError("FileHeader 스트림 없음")
+  const header = parseFileHeader(Buffer.from(headerEntry.content))
+  if (header.signature !== "HWP Document File") throw new KordocError("HWP 시그니처 불일치")
+  if (header.flags & FLAG_ENCRYPTED) throw new KordocError("암호화된 HWP는 지원하지 않습니다")
+  if (header.flags & FLAG_DRM) throw new KordocError("DRM 보호된 HWP는 지원하지 않습니다")
+  const compressed = (header.flags & FLAG_COMPRESSED) !== 0
+
+  const metadata: DocumentMetadata = {
+    version: `${header.versionMajor}.x`,
+  }
+  extractHwp5Metadata(cfb, metadata)
+
+  // DocInfo 파싱 (스타일 정보 추출)
+  const docInfo = parseDocInfoStream(cfb, compressed)
+  const warnings: ParseWarning[] = []
+
+  const sections = findSections(cfb)
+  if (sections.length === 0) throw new KordocError("섹션 스트림을 찾을 수 없습니다")
+
+  metadata.pageCount = sections.length
+
+  // 페이지 범위 필터링 (섹션 단위 근사치)
+  const pageFilter = options?.pages ? parsePageRange(options.pages, sections.length) : null
+
+  const blocks: IRBlock[] = []
+  let totalDecompressed = 0
+  for (let si = 0; si < sections.length; si++) {
+    if (pageFilter && !pageFilter.has(si + 1)) continue
+    const sectionData = sections[si]
+    const data = compressed ? decompressStream(Buffer.from(sectionData)) : Buffer.from(sectionData)
+    totalDecompressed += data.length
+    if (totalDecompressed > MAX_TOTAL_DECOMPRESS) throw new KordocError("총 압축 해제 크기 초과 (decompression bomb 의심)")
+    const records = readRecords(data)
+    const sectionBlocks = parseSection(records, docInfo, warnings, si + 1)
+    blocks.push(...sectionBlocks)
+  }
+
+  // 스타일 기반 헤딩 감지
+  if (docInfo) {
+    detectHwp5Headings(blocks, docInfo)
+  }
+
+  // outline 구축
+  const outline: OutlineItem[] = blocks
+    .filter(b => b.type === "heading" && b.level && b.text)
+    .map(b => ({ level: b.level!, text: b.text!, pageNumber: b.pageNumber }))
+
+  const markdown = blocksToMarkdown(blocks)
+  return { markdown, blocks, metadata, outline: outline.length > 0 ? outline : undefined, warnings: warnings.length > 0 ? warnings : undefined }
+}
+
+/** DocInfo 스트림 파싱 (best-effort) */
+function parseDocInfoStream(cfb: CfbContainer, compressed: boolean): HwpDocInfo | null {
+  try {
+    const entry = CFB.find(cfb, "/DocInfo")
+    if (!entry?.content) return null
+    const data = compressed ? decompressStream(Buffer.from(entry.content)) : Buffer.from(entry.content)
+    const records = readRecords(data)
+    return parseDocInfo(records)
+  } catch {
+    return null
+  }
+}
+
+/** 스타일 기반 헤딩 감지 — 큰 폰트 + 짧은 텍스트 → heading */
+function detectHwp5Headings(blocks: IRBlock[], docInfo: HwpDocInfo): void {
+  // 기본 폰트 크기 결정 (본문 스타일 또는 가장 많이 사용되는 크기)
+  let baseFontSize = 0
+
+  // "바탕글", "본문" 등 본문 스타일 찾기
+  for (const style of docInfo.styles) {
+    const name = (style.nameKo || style.name).toLowerCase()
+    if (name.includes("바탕") || name.includes("본문") || name === "normal" || name === "body") {
+      const cs = docInfo.charShapes[style.charShapeId]
+      // cs.fontSize는 0.1pt 단위 → pt로 변환 (블록의 style.fontSize와 동일 단위)
+      if (cs?.fontSize > 0) { baseFontSize = cs.fontSize / 10; break }
+    }
+  }
+
+  // 본문 스타일 못 찾으면 블록의 폰트 크기 중 최빈값 사용
+  if (baseFontSize === 0) {
+    const sizeFreq = new Map<number, number>()
+    for (const b of blocks) {
+      if (b.style?.fontSize) {
+        sizeFreq.set(b.style.fontSize, (sizeFreq.get(b.style.fontSize) || 0) + 1)
+      }
+    }
+    let maxCount = 0
+    for (const [size, count] of sizeFreq) {
+      if (count > maxCount) { maxCount = count; baseFontSize = size }
+    }
+  }
+
+  if (baseFontSize <= 0) return
+
+  for (const block of blocks) {
+    if (block.type !== "paragraph" || !block.text || !block.style?.fontSize) continue
+    const text = block.text.trim()
+    if (text.length === 0 || text.length > 200) continue
+    if (/^\d+$/.test(text)) continue
+
+    const ratio = block.style.fontSize / baseFontSize
+    let level = 0
+    // 통일된 threshold: PDF/HWPX와 동일 (1.5/1.3/1.15)
+    if (ratio >= 1.5) level = 1
+    else if (ratio >= 1.3) level = 2
+    else if (ratio >= 1.15) level = 3
+
+    // "제N조", "제N장" 패턴은 heading으로 강제 지정
+    if (/^제\d+[조장절편]/.test(text) && text.length <= 50) {
+      if (level === 0) level = 3
+    }
+
+    if (level > 0) {
+      block.type = "heading"
+      block.level = level
+    }
+  }
+}
+
+// ─── 메타데이터 추출 (best-effort) ───────────────────
+
+/**
+ * OLE2 SummaryInformation 스트림에서 제목/작성자 추출.
+ * HWP5는 \005HwpSummaryInformation 또는 \005SummaryInformation에 저장.
+ * OLE2 Property Set 포맷의 간이 파싱 — 실패 시 조용히 무시.
+ */
+function extractHwp5Metadata(cfb: CfbContainer, metadata: DocumentMetadata): void {
+  try {
+    // HWP 전용 SummaryInformation 먼저, 없으면 표준 OLE2
+    const summaryEntry =
+      CFB.find(cfb, "/\x05HwpSummaryInformation") ||
+      CFB.find(cfb, "/\x05SummaryInformation")
+    if (!summaryEntry?.content) return
+
+    const data = Buffer.from(summaryEntry.content)
+    if (data.length < 48) return
+
+    // OLE2 Property Set Header: byte order(2) + version(2) + OS(4) + CLSID(16) + numSets(4) = 28
+    // Then FMTID(16) + offset(4)
+    const numSets = data.readUInt32LE(24)
+    if (numSets === 0) return
+
+    const setOffset = data.readUInt32LE(44)
+    if (setOffset >= data.length - 8) return
+
+    // Property Set: size(4) + numProperties(4) + [propertyId(4) + offset(4)] * N
+    const numProps = data.readUInt32LE(setOffset + 4)
+    if (numProps === 0 || numProps > 100) return
+
+    for (let i = 0; i < numProps; i++) {
+      const entryOffset = setOffset + 8 + i * 8
+      if (entryOffset + 8 > data.length) break
+
+      const propId = data.readUInt32LE(entryOffset)
+      const propOffset = setOffset + data.readUInt32LE(entryOffset + 4)
+      if (propOffset + 8 > data.length) continue
+
+      // Property ID: 2=Title, 4=Author, 6=Subject/Description
+      if (propId !== 2 && propId !== 4 && propId !== 6) continue
+
+      const propType = data.readUInt32LE(propOffset)
+      // Type 0x1E = VT_LPSTR (ANSI string)
+      if (propType !== 0x1e) continue
+
+      const strLen = data.readUInt32LE(propOffset + 4)
+      if (strLen === 0 || strLen > 10000 || propOffset + 8 + strLen > data.length) continue
+
+      const str = data.subarray(propOffset + 8, propOffset + 8 + strLen).toString("utf8").replace(/\0+$/, "").trim()
+      if (!str) continue
+
+      if (propId === 2) metadata.title = str
+      else if (propId === 4) metadata.author = str
+      else if (propId === 6) metadata.description = str
+    }
+  } catch {
+    // best-effort — 실패 시 조용히 무시
+  }
+}
+
+/** 메타데이터만 추출 (전체 파싱 없이) — MCP parse_metadata용 */
+export function extractHwp5MetadataOnly(buffer: Buffer): DocumentMetadata {
+  const cfb = CFB.parse(buffer)
+  const headerEntry = CFB.find(cfb, "/FileHeader")
+  if (!headerEntry?.content) throw new KordocError("FileHeader 스트림 없음")
+  const header = parseFileHeader(Buffer.from(headerEntry.content))
+  if (header.signature !== "HWP Document File") throw new KordocError("HWP 시그니처 불일치")
+
+  const metadata: DocumentMetadata = {
+    version: `${header.versionMajor}.x`,
+  }
+  extractHwp5Metadata(cfb, metadata)
+
+  const sections = findSections(cfb)
+  metadata.pageCount = sections.length
+
+  return metadata
+}
+
+function findSections(cfb: CfbContainer): Buffer[] {
+  const sections: Array<{ idx: number; content: Buffer }> = []
+
+  for (let i = 0; i < MAX_SECTIONS; i++) {
+    const entry = CFB.find(cfb, `/BodyText/Section${i}`)
+    if (!entry?.content) break
+    sections.push({ idx: i, content: Buffer.from(entry.content) })
+  }
+
+  if (sections.length === 0 && cfb.FileIndex) {
+    for (const entry of cfb.FileIndex) {
+      if (sections.length >= MAX_SECTIONS) break
+      if (entry.name?.startsWith("Section") && entry.content) {
+        const idx = parseInt(entry.name.replace("Section", ""), 10) || 0
+        sections.push({ idx, content: Buffer.from(entry.content) })
+      }
+    }
+  }
+
+  return sections.sort((a, b) => a.idx - b.idx).map(s => s.content)
+}
+
+function parseSection(records: HwpRecord[], docInfo: HwpDocInfo | null, warnings: ParseWarning[], sectionNum: number): IRBlock[] {
+  const blocks: IRBlock[] = []
+  let i = 0
+
+  while (i < records.length) {
+    const rec = records[i]
+
+    if (rec.tagId === TAG_PARA_HEADER && rec.level === 0) {
+      const { paragraph, tables, nextIdx, charShapeIds } = parseParagraphWithTables(records, i)
+      if (paragraph) {
+        const block: IRBlock = { type: "paragraph", text: paragraph, pageNumber: sectionNum }
+        // CHAR_SHAPE 기반 스타일 정보 추가
+        if (docInfo && charShapeIds.length > 0) {
+          const style = resolveCharStyle(charShapeIds, docInfo)
+          if (style) block.style = style
+        }
+        blocks.push(block)
+      }
+      for (const t of tables) blocks.push({ type: "table", table: t, pageNumber: sectionNum })
+      i = nextIdx
+      continue
+    }
+
+    if (rec.tagId === TAG_CTRL_HEADER && rec.level <= 1 && rec.data.length >= 4) {
+      const ctrlId = rec.data.subarray(0, 4).toString("ascii")
+      if (ctrlId === " lbt" || ctrlId === "tbl ") {
+        const { table, nextIdx } = parseTableBlock(records, i)
+        if (table) blocks.push({ type: "table", table, pageNumber: sectionNum })
+        i = nextIdx
+        continue
+      }
+      // 이미지/OLE 제어 — 경고 수집
+      if (ctrlId === "gso " || ctrlId === " osg" || ctrlId === " elo" || ctrlId === "ole ") {
+        warnings.push({ page: sectionNum, message: `스킵된 제어 요소: ${ctrlId.trim()}`, code: "SKIPPED_IMAGE" })
+      }
+    }
+
+    i++
+  }
+
+  return blocks
+}
+
+/** CHAR_SHAPE ID 배열에서 대표 스타일 결정 (최빈값) */
+function resolveCharStyle(charShapeIds: number[], docInfo: HwpDocInfo): InlineStyle | undefined {
+  if (charShapeIds.length === 0 || docInfo.charShapes.length === 0) return undefined
+
+  // 가장 많이 나타나는 charShapeId 사용
+  const freq = new Map<number, number>()
+  let maxCount = 0, dominantId = charShapeIds[0]
+  for (const id of charShapeIds) {
+    const count = (freq.get(id) || 0) + 1
+    freq.set(id, count)
+    if (count > maxCount) { maxCount = count; dominantId = id }
+  }
+
+  const cs = docInfo.charShapes[dominantId]
+  if (!cs) return undefined
+
+  const style: InlineStyle = {}
+  if (cs.fontSize > 0) style.fontSize = cs.fontSize / 10  // 0.1pt → pt
+  if (cs.attrFlags & 0x01) style.italic = true
+  if (cs.attrFlags & 0x02) style.bold = true
+
+  return (style.fontSize || style.bold || style.italic) ? style : undefined
+}
+
+function parseParagraphWithTables(records: HwpRecord[], startIdx: number) {
+  const startLevel = records[startIdx].level
+  let text = ""
+  const tables: ReturnType<typeof buildTable>[] = []
+  const charShapeIds: number[] = []
+  let i = startIdx + 1
+
+  while (i < records.length) {
+    const rec = records[i]
+    if (rec.tagId === TAG_PARA_HEADER && rec.level <= startLevel) break
+
+    if (rec.tagId === TAG_PARA_TEXT) {
+      text = extractText(rec.data)
+    }
+
+    // CHAR_SHAPE 레코드 — 문단 내 글자 모양 인덱스 배열
+    if (rec.tagId === TAG_CHAR_SHAPE && rec.data.length >= 8) {
+      // 구조: [position(u32) + charShapeId(u32)] * N
+      for (let offset = 0; offset + 7 < rec.data.length; offset += 8) {
+        charShapeIds.push(rec.data.readUInt32LE(offset + 4))
+      }
+    }
+
+    if (rec.tagId === TAG_CTRL_HEADER && rec.data.length >= 4) {
+      const ctrlId = rec.data.subarray(0, 4).toString("ascii")
+      if (ctrlId === " lbt" || ctrlId === "tbl ") {
+        const { table, nextIdx } = parseTableBlock(records, i)
+        if (table) tables.push(table)
+        i = nextIdx
+        continue
+      }
+    }
+    i++
+  }
+
+  const trimmed = text.trim()
+  return { paragraph: trimmed || null, tables, nextIdx: i, charShapeIds }
+}
+
+function parseTableBlock(records: HwpRecord[], startIdx: number) {
+  const tableLevel = records[startIdx].level
+  let i = startIdx + 1
+  let rows = 0, cols = 0
+  const cells: CellContext[] = []
+
+  while (i < records.length) {
+    const rec = records[i]
+    if (rec.tagId === TAG_PARA_HEADER && rec.level <= tableLevel) break
+    if (rec.tagId === TAG_CTRL_HEADER && rec.level <= tableLevel) break
+
+    if (rec.tagId === TAG_TABLE && rec.data.length >= 8) {
+      rows = Math.min(rec.data.readUInt16LE(4), MAX_ROWS)
+      cols = Math.min(rec.data.readUInt16LE(6), MAX_COLS)
+    }
+
+    if (rec.tagId === TAG_LIST_HEADER) {
+      const { cell, nextIdx } = parseCellBlock(records, i, tableLevel)
+      if (cell) cells.push(cell)
+      i = nextIdx
+      continue
+    }
+    i++
+  }
+
+  if (rows === 0 || cols === 0 || cells.length === 0) return { table: null, nextIdx: i }
+
+  const cellRows = arrangeCells(rows, cols, cells)
+  return { table: buildTable(cellRows), nextIdx: i }
+}
+
+function parseCellBlock(records: HwpRecord[], startIdx: number, tableLevel: number) {
+  const rec = records[startIdx]
+  const cellLevel = rec.level
+  const texts: string[] = []
+
+  // LIST_HEADER에서 셀 위치 및 병합 정보 추출
+  // HWP5 셀 LIST_HEADER 구조:
+  //   paraCount(u16) + flags(u32) + width(u16) + colAddr(u16) + rowAddr(u16) + colSpan(u16) + rowSpan(u16)
+  //   offset: 0         2            6           8              10             12             14
+  let colSpan = 1
+  let rowSpan = 1
+  let colAddr: number | undefined
+  let rowAddr: number | undefined
+  if (rec.data.length >= 16) {
+    colAddr = rec.data.readUInt16LE(8)
+    rowAddr = rec.data.readUInt16LE(10)
+    const cs = rec.data.readUInt16LE(12)
+    const rs = rec.data.readUInt16LE(14)
+    if (cs > 0) colSpan = Math.min(cs, MAX_COLS)
+    if (rs > 0) rowSpan = Math.min(rs, MAX_ROWS)
+  }
+
+  let i = startIdx + 1
+
+  while (i < records.length) {
+    const r = records[i]
+    if (r.tagId === TAG_LIST_HEADER && r.level <= cellLevel) break
+    if (r.level <= tableLevel && (r.tagId === TAG_PARA_HEADER || r.tagId === TAG_CTRL_HEADER)) break
+
+    if (r.tagId === TAG_PARA_TEXT) {
+      const t = extractText(r.data).trim()
+      if (t) texts.push(t)
+    }
+    i++
+  }
+
+  return { cell: { text: texts.join("\n"), colSpan, rowSpan, colAddr, rowAddr } as CellContext, nextIdx: i }
+}
+
+function arrangeCells(rows: number, cols: number, cells: CellContext[]): CellContext[][] {
+  const grid: (CellContext | null)[][] = Array.from({ length: rows }, () => Array(cols).fill(null))
+
+  // colAddr/rowAddr가 있으면 직접 배치 (HWP5 병합 테이블 정확도 향상)
+  const hasAddr = cells.some(c => c.colAddr !== undefined && c.rowAddr !== undefined)
+
+  if (hasAddr) {
+    for (const cell of cells) {
+      const r = cell.rowAddr ?? 0
+      const c = cell.colAddr ?? 0
+      if (r >= rows || c >= cols) continue
+      grid[r][c] = cell
+
+      for (let dr = 0; dr < cell.rowSpan; dr++) {
+        for (let dc = 0; dc < cell.colSpan; dc++) {
+          if (dr === 0 && dc === 0) continue
+          if (r + dr < rows && c + dc < cols)
+            grid[r + dr][c + dc] = { text: "", colSpan: 1, rowSpan: 1 }
+        }
+      }
+    }
+  } else {
+    // fallback: 순차 배치 (colAddr 없는 경우)
+    let cellIdx = 0
+    for (let r = 0; r < rows && cellIdx < cells.length; r++) {
+      for (let c = 0; c < cols && cellIdx < cells.length; c++) {
+        if (grid[r][c] !== null) continue
+        const cell = cells[cellIdx++]
+        grid[r][c] = cell
+
+        for (let dr = 0; dr < cell.rowSpan; dr++) {
+          for (let dc = 0; dc < cell.colSpan; dc++) {
+            if (dr === 0 && dc === 0) continue
+            if (r + dr < rows && c + dc < cols)
+              grid[r + dr][c + dc] = { text: "", colSpan: 1, rowSpan: 1 }
+          }
+        }
+      }
+    }
+  }
+
+  return grid.map(row => row.map(c => c || { text: "", colSpan: 1, rowSpan: 1 }))
+}
