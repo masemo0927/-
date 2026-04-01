@@ -603,6 +603,44 @@
       </div>
 
       <div id="law-results-area"></div>
+
+      <!-- 보고서 생성 폼 (검색 후 표시) -->
+      <div id="law-report-form" style="display:none;margin-top:24px;border-top:2px solid var(--border);padding-top:20px;">
+        <div class="section-label" style="margin-top:0;">보고서 정보 입력 후 HWPX 생성</div>
+        <div class="row">
+          <div class="field" style="flex:3">
+            <label>보고서 제목 *</label>
+            <input type="text" id="lr-title" placeholder="예) 공영주차장 P-sign 철거공사 법령 검토 보고">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field"><label>날짜</label><input type="text" id="lr-date" placeholder="예) '25.06.10.(화)"></div>
+          <div class="field"><label>팀명</label><input type="text" id="lr-team" placeholder="예) 시설관리팀"></div>
+          <div class="field"><label>담당자</label><input type="text" id="lr-person" placeholder="예) 홍길동"></div>
+          <div class="field"><label>전화</label><input type="text" id="lr-phone" placeholder="예) 044-000-0000"></div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>검토배경 (줄바꿈으로 항목 구분)</label>
+            <textarea id="lr-background" rows="3" placeholder="예) 강풍·진동에 의한 부착물 이탈 및 중대재해 발생 우려&#10;시민 안전 확보를 위한 선제적 시설물 안전조치 필요"></textarea>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>검토의견 (줄바꿈으로 항목 구분)</label>
+            <textarea id="lr-opinion" rows="3" placeholder="법령 검토 의견을 입력하세요."></textarea>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>결론 (줄바꿈으로 항목 구분)</label>
+            <textarea id="lr-conclusion" rows="3" placeholder="결론을 입력하세요."></textarea>
+          </div>
+        </div>
+        <button class="btn-generate" id="btn-law-report" onclick="generateLawReport()" style="margin-top:10px;">
+          📥 법령검토 보고서 HWPX 생성
+        </button>
+      </div>
     </div>
   </div>
 
@@ -667,6 +705,8 @@
   };
 
   function renderLawResults(data) {
+    _lawSearchResults = data;  // 보고서 생성용 저장
+    document.getElementById('law-report-form').style.display = 'block';
     const area = document.getElementById('law-results-area');
     const { query, results } = data;
     let totalFound = 0;
@@ -754,6 +794,67 @@
 
   function toggleSection(id) {
     document.getElementById(id).classList.toggle('collapsed');
+  }
+
+  // ── 법령 분석: 검색 결과 저장소 (보고서 생성용)
+  let _lawSearchResults = null;
+
+  // ── 법령 분석: 보고서 생성
+  async function generateLawReport() {
+    if (!_lawSearchResults) { showToast('먼저 법령 검색을 실행하세요.', 'error'); return; }
+    const title = document.getElementById('lr-title').value.trim();
+    if (!title) { showToast('보고서 제목을 입력하세요.', 'error'); return; }
+
+    const btn = document.getElementById('btn-law-report');
+    btn.disabled = true;
+    btn.textContent = '생성 중...';
+
+    const { results } = _lawSearchResults;
+
+    // 각 카테고리에서 항목 추출
+    const getItems = (key) => (results[key] || {}).items || [];
+
+    const fd = new FormData();
+    fd.append('title',           title);
+    fd.append('date',            document.getElementById('lr-date').value.trim());
+    fd.append('team',            document.getElementById('lr-team').value.trim());
+    fd.append('person',          document.getElementById('lr-person').value.trim());
+    fd.append('phone',           document.getElementById('lr-phone').value.trim());
+    fd.append('background',      document.getElementById('lr-background').value.trim());
+    fd.append('opinion',         document.getElementById('lr-opinion').value.trim());
+    fd.append('conclusion',      document.getElementById('lr-conclusion').value.trim());
+    fd.append('laws',            JSON.stringify(getItems('법령')));
+    fd.append('admin_rules',     JSON.stringify([
+      ...getItems('훈령'), ...getItems('예규'),
+      ...getItems('고시'), ...getItems('지침'),
+    ]));
+    fd.append('precedents',      JSON.stringify(getItems('판례')));
+    fd.append('interpretations', JSON.stringify(getItems('해석례')));
+    fd.append('appeals',         JSON.stringify(getItems('행정심판')));
+
+    try {
+      const res = await fetch('/generate/law_review', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: '서버 오류' }));
+        showToast(err.error || '오류 발생', 'error'); return;
+      }
+      const disp = res.headers.get('Content-Disposition') || '';
+      let filename = 'law_review.hwpx';
+      const m = disp.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i);
+      if (m) filename = decodeURIComponent(m[1]);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      showToast('✅ ' + filename + ' 다운로드 완료', 'success');
+    } catch(e) {
+      showToast('네트워크 오류: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '📥 법령검토 보고서 HWPX 생성';
+    }
   }
 
   function escHtml(s) {
