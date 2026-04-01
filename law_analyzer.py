@@ -11,10 +11,32 @@ import urllib.request
 import urllib.parse
 import urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 LAW_API_BASE = "https://www.law.go.kr/DRF"
 DEFAULT_DISPLAY = 5
 _INVALID_KEYS = {"", "YOUR_API_KEY_HERE", "ryuseungin"}
+
+
+def _load_dotenv():
+    """앱 루트의 .env 파일에서 LAW_OC를 로드 (환경변수 미설정 시)"""
+    if os.environ.get("LAW_OC"):
+        return
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = val
+
+
+_load_dotenv()
 
 
 def _get_api_key():
