@@ -44,6 +44,13 @@ def _get_api_key():
     return key if key not in _INVALID_KEYS else None
 
 
+def _make_opener():
+    """law.go.kr를 프록시에서 제외한 opener 생성"""
+    proxy_handler = urllib.request.ProxyHandler({})  # 프록시 완전 무시
+    opener = urllib.request.build_opener(proxy_handler)
+    return opener
+
+
 def _fetch(url: str) -> str:
     req = urllib.request.Request(
         url,
@@ -53,7 +60,8 @@ def _fetch(url: str) -> str:
         }
     )
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        opener = _make_opener()
+        with opener.open(req, timeout=15) as resp:
             raw = resp.read()
             return raw.decode("utf-8", errors="replace")
     except urllib.error.HTTPError as e:
@@ -62,13 +70,28 @@ def _fetch(url: str) -> str:
         return f"<error>HTTP 오류 {e.code}: {e.reason}</error>"
     except urllib.error.URLError as e:
         reason = str(e.reason)
+        if "Name or service not known" in reason or "Temporary failure" in reason or "-3" in reason:
+            return (
+                "<error>DNS 해석 실패: law.go.kr에 접근할 수 없습니다.\n"
+                "원인: 이 클라우드 실행 환경(Claude Code Web)은 Anthropic 이그레스 프록시를 통해\n"
+                "외부 네트워크에 접속하며, www.law.go.kr은 허용 호스트 목록에 포함되어 있지 않습니다.\n"
+                "해결: 로컬 PC에서 'python app.py'로 실행하면 정상 작동합니다.</error>"
+            )
         if "403" in reason or "host_not_allowed" in reason or "Forbidden" in reason:
-            return "<error>네트워크 차단: 이 서버 환경에서 law.go.kr 접근이 제한되어 있습니다. 로컬 환경에서 실행하세요.</error>"
-        return f"<error>네트워크 연결 실패: {e.reason}. law.go.kr에 접근할 수 없습니다.</error>"
-    except TimeoutError:
-        return "<error>요청 시간 초과 (15초). 네트워크 상태를 확인하세요.</error>"
+            return (
+                "<error>프록시 차단: Anthropic 클라우드 환경에서 law.go.kr 접근이 차단되었습니다.\n"
+                "로컬 PC에서 실행 시 정상 작동합니다.</error>"
+            )
+        return f"<error>네트워크 연결 실패: {e.reason}</error>"
+    except OSError as e:
+        if "Network is unreachable" in str(e) or "No route to host" in str(e):
+            return (
+                "<error>네트워크 차단: 클라우드 환경에서 law.go.kr 접근 불가.\n"
+                "로컬 PC에서 실행하세요.</error>"
+            )
+        return f"<error>네트워크 오류: {e}</error>"
     except Exception as e:
-        return f"<error>알 수 없는 오류: {e}</error>"
+        return f"<error>알 수 없는 오류: {type(e).__name__}: {e}</error>"
 
 
 def _extract(content: str, tag: str) -> str:
