@@ -35,7 +35,7 @@ def index():
 @app.route('/generate/<report_type>', methods=['POST'])
 def generate(report_type):
     """hwpx 파일 생성 및 다운로드"""
-    valid_types = ('review', 'plan', 'inspection', 'seminar', 'law_review')
+    valid_types = ('review', 'plan', 'inspection', 'seminar', 'law_review', 'incident')
     if report_type not in valid_types:
         return jsonify({'error': '잘못된 보고서 유형입니다.'}), 400
 
@@ -45,6 +45,15 @@ def generate(report_type):
     if report_type == 'law_review':
         import json
         for field in ('laws', 'admin_rules', 'precedents', 'interpretations', 'appeals'):
+            raw = data.pop(field, '[]')
+            try:
+                data[field] = json.loads(raw)
+            except Exception:
+                data[field] = []
+
+    if report_type == 'incident':
+        import json
+        for field in ('overview', 'process', 'damage', 'cause', 'issues', 'laws', 'measures', 'schedule'):
             raw = data.pop(field, '[]')
             try:
                 data[field] = json.loads(raw)

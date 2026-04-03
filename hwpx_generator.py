@@ -513,6 +513,98 @@ def build_law_review_report(data):
     return b.to_xml()
 
 
+def build_incident_report(data):
+    """사고 경위 및 재발방지 대책 보고서"""
+    b = ParagraphBuilder()
+    b.title(data.get('title', '사고 경위 및 재발방지 대책 보고'))
+    b.date_line(
+        f"{data.get('date', '')}  {data.get('team', '')} "
+        f"{data.get('person', '')} ☎ {data.get('phone', '')}"
+    )
+    b.empty()
+
+    # 사고 개요
+    overview = data.get('overview', [])
+    if overview:
+        b.section("□ 사고 개요")
+        for line in overview:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 사고 경위
+    process = data.get('process', [])
+    if process:
+        b.section("□ 사고 경위")
+        for line in process:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 피해 현황
+    damage = data.get('damage', [])
+    if damage:
+        b.section("□ 피해 현황")
+        for line in damage:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 원인 분석
+    cause = data.get('cause', [])
+    if cause:
+        b.section("□ 원인 분석")
+        for line in cause:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 문제점
+    issues = data.get('issues', [])
+    if issues:
+        b.section("□ 문제점")
+        for line in issues:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 관련 법령
+    laws = data.get('laws', [])
+    if laws:
+        b.section("□ 관련 법령 및 규정")
+        for line in laws:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 재발방지 대책
+    measures = data.get('measures', [])
+    if measures:
+        b.section("□ 재발방지 대책")
+        for i, m in enumerate(measures, 1):
+            if isinstance(m, dict):
+                b.item(f"○ [{i}] {m.get('title', '')}")
+                for detail in m.get('details', []):
+                    b.sub_item(f"- {detail}")
+            else:
+                b.item(f"○ {m}")
+        b.empty()
+
+    # 향후 일정
+    schedule = data.get('schedule', [])
+    if schedule:
+        b.section("□ 향후 추진 일정")
+        for line in schedule:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 특이사항
+    notes = data.get('notes', '')
+    if notes:
+        b.section("□ 특이사항")
+        for line in _split_lines(notes):
+            b.item(f"○ {line}")
+        b.empty()
+
+    b.attachment()
+    b.ending()
+    return b.to_xml()
+
+
 def _split_lines(text):
     """줄바꿈 기준으로 분리, 빈 줄 제거"""
     if not text:
@@ -530,6 +622,7 @@ REPORT_BUILDERS = {
     'inspection':  build_inspection_report,
     'seminar':     build_seminar_report,
     'law_review':  build_law_review_report,
+    'incident':    build_incident_report,
 }
 
 REPORT_NAMES = {
@@ -538,6 +631,7 @@ REPORT_NAMES = {
     'inspection':  '현장점검보고',
     'seminar':     '세미나행사개최계획',
     'law_review':  '법령검토보고',
+    'incident':    '사고경위및재발방지대책보고',
 }
 
 
