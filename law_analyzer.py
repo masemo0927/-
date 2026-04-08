@@ -15,6 +15,7 @@ from pathlib import Path
 
 LAW_API_BASE = "https://www.law.go.kr/DRF"
 DEFAULT_DISPLAY = 5
+DEFAULT_API_KEY = "leeseungback_0927"   # 법제처 Open API OC 키
 _INVALID_KEYS = {"", "YOUR_API_KEY_HERE", "ryuseungin"}
 
 
@@ -41,7 +42,10 @@ _load_dotenv()
 
 def _get_api_key():
     key = os.environ.get("LAW_OC", "").strip()
-    return key if key not in _INVALID_KEYS else None
+    if key and key not in _INVALID_KEYS:
+        return key
+    # 환경변수 미설정 시 기본 키 사용
+    return DEFAULT_API_KEY
 
 
 def _make_opener():
@@ -244,14 +248,10 @@ def analyze(query: str, api_key: str = None) -> dict:
     """
     if not api_key:
         api_key = _get_api_key()
+    # _get_api_key()는 항상 DEFAULT_API_KEY를 반환하므로 None 불가
+    # 혹시 빈 문자열인 경우 대비
     if not api_key:
-        return {
-            "error": (
-                "API 키가 설정되지 않았습니다.\n"
-                "법제처 Open API(https://open.law.go.kr)에서 무료 발급 후\n"
-                "LAW_OC 환경변수에 설정하거나 아래 입력란에 직접 입력하세요."
-            )
-        }
+        api_key = DEFAULT_API_KEY
 
     tasks = {
         "법령":     lambda: search_law(query, api_key),
