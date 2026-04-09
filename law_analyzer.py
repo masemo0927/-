@@ -14,9 +14,31 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 LAW_API_BASE = "https://www.law.go.kr/DRF"
+LAW_PROXY_BASE = "http://localhost:8899/DRF"   # 로컬 프록시 (law_proxy.py 실행 시)
 DEFAULT_DISPLAY = 5
 DEFAULT_API_KEY = "leeseungback_0927"   # 법제처 Open API OC 키
 _INVALID_KEYS = {"", "YOUR_API_KEY_HERE", "ryuseungin"}
+_proxy_available = None   # None=미확인, True/False=확인됨
+
+
+def _check_proxy() -> bool:
+    """localhost:8899 프록시 서버 가동 여부 확인"""
+    global _proxy_available
+    if _proxy_available is not None:
+        return _proxy_available
+    try:
+        import socket
+        s = socket.create_connection(("127.0.0.1", 8899), timeout=1)
+        s.close()
+        _proxy_available = True
+        print("[law_analyzer] 로컬 프록시(localhost:8899) 감지 → 프록시 사용")
+    except OSError:
+        _proxy_available = False
+    return _proxy_available
+
+
+def _get_base_url() -> str:
+    return LAW_PROXY_BASE if _check_proxy() else LAW_API_BASE
 
 
 def _load_dotenv():
@@ -132,7 +154,8 @@ def _get_error(xml: str) -> str:
 
 
 def _build_url(endpoint: str, params: dict) -> str:
-    return f"{LAW_API_BASE}/{endpoint}?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}"
+    base = _get_base_url()
+    return f"{base}/{endpoint}?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}"
 
 
 # ── 개별 검색 함수 ──────────────────────────────────────────────────
