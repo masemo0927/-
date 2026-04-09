@@ -576,71 +576,106 @@
   </div>
 
   <!-- ══════════════════════════════════════
-       탭 5: 법령 분석
+       탭 5: 법령 검토 보고서
   ══════════════════════════════════════ -->
   <div class="tab-panel" id="panel-lawsearch">
     <div class="card">
-      <h2>⚖️ 법령 종합 분석</h2>
-      <p style="font-size:13px;color:var(--sub);margin-bottom:16px;">
-        법령 · 훈령 · 예규 · 고시 · 지침 · 판례 · 해석례 · 행정심판례를 한 번에 검색합니다.
-        (<a href="https://open.law.go.kr/LSO/openApi/guideResult.do" target="_blank" style="color:var(--accent);">법제처 Open API</a> 키 필요)
-      </p>
+      <h2>⚖️ 법령 검토 보고서 작성</h2>
 
-      <div id="law-api-notice" class="law-api-notice">
-        ⚠️ 서버에 API 키가 설정되어 있지 않습니다. 아래에 직접 입력하거나,
-        서버의 <code>LAW_OC</code> 환경변수를 설정하세요.
+      <!-- 사용 안내 -->
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;margin-bottom:20px;font-size:13px;line-height:1.8;">
+        <strong style="color:#1d4ed8;">💡 사용 방법 (Claude Code 웹 환경)</strong><br>
+        ① Claude에게 법령 질문 → ② 분석 결과를 아래 양식에 입력 → ③ HWPX 보고서 자동 생성<br>
+        <span style="color:#6b7280;">예) "공영주차장 P-sign 철거공사 시 저촉되는 법령과 판례를 분석해줘"</span>
       </div>
 
-      <div class="law-api-row">
-        <span style="font-size:13px;font-weight:600;white-space:nowrap;color:var(--sub);">API 키</span>
-        <input type="text" id="law-api-key" placeholder="법제처 Open API 키 (서버에 설정된 경우 비워두세요)" autocomplete="off">
+      <!-- 보고서 기본 정보 -->
+      <div class="section-label" style="margin-top:0;">기본 정보</div>
+      <div class="row">
+        <div class="field" style="flex:3">
+          <label>보고서 제목 *</label>
+          <input type="text" id="lr-title" placeholder="예) 공영주차장 P-sign 철거공사 법령 검토 보고">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>날짜</label><input type="text" id="lr-date" placeholder="예) '25.06.10.(화)"></div>
+        <div class="field"><label>팀명</label><input type="text" id="lr-team" placeholder="예) 시설관리팀"></div>
+        <div class="field"><label>담당자</label><input type="text" id="lr-person" placeholder="예) 홍길동"></div>
+        <div class="field"><label>전화</label><input type="text" id="lr-phone" placeholder="예) 044-000-0000"></div>
       </div>
 
-      <div class="law-search-bar">
-        <input type="text" id="law-query" placeholder="예) 크레인 철거 낙하물 방지  /  산업안전보건법 옥외광고물  /  공작물 철거 안전조치"
-               onkeydown="if(event.key==='Enter') doLawSearch()">
-        <button class="btn-search" id="btn-law-search" onclick="doLawSearch()">검색</button>
+      <!-- 검토배경 -->
+      <div class="section-label">검토배경</div>
+      <div class="row">
+        <div class="field">
+          <label>검토배경 (줄바꿈으로 항목 구분)</label>
+          <textarea id="lr-background" rows="3" placeholder="예) 강풍·진동에 의한 부착물 이탈 및 중대재해 발생 우려&#10;시민 안전 확보를 위한 선제적 시설물 안전조치 필요"></textarea>
+        </div>
       </div>
 
-      <div id="law-results-area"></div>
-
-      <!-- 보고서 생성 폼 (검색 후 표시) -->
-      <div id="law-report-form" style="display:none;margin-top:24px;border-top:2px solid var(--border);padding-top:20px;">
-        <div class="section-label" style="margin-top:0;">보고서 정보 입력 후 HWPX 생성</div>
-        <div class="row">
-          <div class="field" style="flex:3">
-            <label>보고서 제목 *</label>
-            <input type="text" id="lr-title" placeholder="예) 공영주차장 P-sign 철거공사 법령 검토 보고">
-          </div>
+      <!-- 관련 법령 -->
+      <div class="section-label">📜 관련 법령 <small style="font-weight:400;color:var(--sub);margin-left:6px;">한 줄에 하나씩 입력</small></div>
+      <div class="row">
+        <div class="field">
+          <label>법률·시행령·시행규칙 (줄바꿈으로 구분)</label>
+          <textarea id="lr-laws" rows="4" placeholder="예) 산업안전보건법 제38조 (안전조치)&#10;건설기술진흥법 제62조 (건설공사 안전관리)&#10;옥외광고물 등의 관리와 옥외광고산업 진흥에 관한 법률 제8조"></textarea>
         </div>
-        <div class="row">
-          <div class="field"><label>날짜</label><input type="text" id="lr-date" placeholder="예) '25.06.10.(화)"></div>
-          <div class="field"><label>팀명</label><input type="text" id="lr-team" placeholder="예) 시설관리팀"></div>
-          <div class="field"><label>담당자</label><input type="text" id="lr-person" placeholder="예) 홍길동"></div>
-          <div class="field"><label>전화</label><input type="text" id="lr-phone" placeholder="예) 044-000-0000"></div>
-        </div>
-        <div class="row">
-          <div class="field">
-            <label>검토배경 (줄바꿈으로 항목 구분)</label>
-            <textarea id="lr-background" rows="3" placeholder="예) 강풍·진동에 의한 부착물 이탈 및 중대재해 발생 우려&#10;시민 안전 확보를 위한 선제적 시설물 안전조치 필요"></textarea>
-          </div>
-        </div>
-        <div class="row">
-          <div class="field">
-            <label>검토의견 (줄바꿈으로 항목 구분)</label>
-            <textarea id="lr-opinion" rows="3" placeholder="법령 검토 의견을 입력하세요."></textarea>
-          </div>
-        </div>
-        <div class="row">
-          <div class="field">
-            <label>결론 (줄바꿈으로 항목 구분)</label>
-            <textarea id="lr-conclusion" rows="3" placeholder="결론을 입력하세요."></textarea>
-          </div>
-        </div>
-        <button class="btn-generate" id="btn-law-report" onclick="generateLawReport()" style="margin-top:10px;">
-          📥 법령검토 보고서 HWPX 생성
-        </button>
       </div>
+
+      <!-- 행정규칙 -->
+      <div class="section-label">📋 관련 행정규칙 <small style="font-weight:400;color:var(--sub);margin-left:6px;">훈령·예규·고시·지침</small></div>
+      <div class="row">
+        <div class="field">
+          <label>훈령·예규·고시·지침 (줄바꿈으로 구분)</label>
+          <textarea id="lr-adminrules" rows="3" placeholder="예) 산업안전보건기준에 관한 규칙 제14조 (추락에 의한 위험 방지)&#10;건설공사 안전관리 업무수행 지침 (국토부고시)"></textarea>
+        </div>
+      </div>
+
+      <!-- 판례 -->
+      <div class="section-label">⚖️ 관련 판례</div>
+      <div class="row">
+        <div class="field">
+          <label>판례 (줄바꿈으로 구분)</label>
+          <textarea id="lr-precedents" rows="3" placeholder="예) 대법원 2021도12345 — 철거공사 중 안전조치 미이행 업무상과실치사&#10;서울고등법원 2020나56789 — 옥외광고물 낙하 손해배상"></textarea>
+        </div>
+      </div>
+
+      <!-- 법령해석례 -->
+      <div class="section-label">💬 법령해석례 · 행정해석</div>
+      <div class="row">
+        <div class="field">
+          <label>해석례·행정해석 (줄바꿈으로 구분)</label>
+          <textarea id="lr-interpretations" rows="3" placeholder="예) 법제처 해석 — 공작물 철거 시 안전관리 의무 범위 (2022.03.)&#10;고용부 행정해석 — 수급인의 안전보건조치 적용 기준"></textarea>
+        </div>
+      </div>
+
+      <!-- 행정심판례 -->
+      <div class="section-label">🏛 행정심판례</div>
+      <div class="row">
+        <div class="field">
+          <label>행정심판례 (줄바꿈으로 구분)</label>
+          <textarea id="lr-appeals" rows="2" placeholder="예) 중앙행정심판위원회 — 옥외광고물 철거명령 처분 취소 청구 기각 (2021)"></textarea>
+        </div>
+      </div>
+
+      <!-- 검토의견 & 결론 -->
+      <div class="section-label">검토의견 및 결론</div>
+      <div class="row">
+        <div class="field">
+          <label>검토의견 (줄바꿈으로 항목 구분)</label>
+          <textarea id="lr-opinion" rows="4" placeholder="Claude 분석 결과를 여기에 붙여넣기 하세요.&#10;줄바꿈 시 ○ 항목으로 분리됩니다."></textarea>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>결론 (줄바꿈으로 항목 구분)</label>
+          <textarea id="lr-conclusion" rows="3" placeholder="예) 관련 법령에 따라 철거 전 안전점검 및 안전계획서 수립 필요&#10;산업안전보건법상 안전조치 이행 후 공사 진행 권고"></textarea>
+        </div>
+      </div>
+
+      <button class="btn-generate" id="btn-law-report" onclick="generateLawReport()">
+        📥 법령검토 보고서 HWPX 생성
+      </button>
     </div>
   </div>
 
@@ -658,161 +693,23 @@
       document.getElementById('panel-' + t).classList.toggle('active', t === id);
       tabBtns[i].classList.toggle('active', t === id);
     });
-    if (id === 'lawsearch') checkLawApiKey();
   }
 
-  // ── 법령 분석: API 키 상태 확인
-  async function checkLawApiKey() {
-    try {
-      const res = await fetch('/law-api-key-status');
-      const { configured } = await res.json();
-      document.getElementById('law-api-notice').classList.toggle('show', !configured);
-    } catch { /* 무시 */ }
+  // ── 법령 검토 보고서: 텍스트 입력 → HWPX 생성
+  function textToItems(textareaId, nameField) {
+    const val = document.getElementById(textareaId).value.trim();
+    if (!val) return [];
+    return val.split('\n').map(line => line.trim()).filter(Boolean)
+              .map(line => ({ [nameField]: line }));
   }
 
-  // ── 법령 분석: 검색 실행
-  async function doLawSearch() {
-    const query   = document.getElementById('law-query').value.trim();
-    const apiKey  = document.getElementById('law-api-key').value.trim();
-    const area    = document.getElementById('law-results-area');
-    const btn     = document.getElementById('btn-law-search');
-    if (!query) { showToast('검색어를 입력하세요.', 'error'); return; }
-
-    btn.disabled = true;
-    area.innerHTML = '<div class="law-loading"><span class="spinner"></span>법령·판례·해석례 검색 중...</div>';
-
-    try {
-      const res = await fetch('/law-analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, api_key: apiKey || undefined }),
-      });
-      const data = await res.json();
-      if (data.error) { area.innerHTML = `<div class="law-empty" style="color:#b91c1c;">${data.error}</div>`; return; }
-      renderLawResults(data);
-    } catch (e) {
-      area.innerHTML = `<div class="law-empty" style="color:#b91c1c;">네트워크 오류: ${e.message}</div>`;
-    } finally {
-      btn.disabled = false;
-    }
-  }
-
-  // ── 법령 분석: 결과 렌더링
-  const LAW_SECTION_ORDER = ['법령', '훈령', '예규', '고시', '지침', '판례', '해석례', '행정심판'];
-  const LAW_SECTION_ICONS = {
-    '법령': '📜', '훈령': '📋', '예규': '📂', '고시': '📣',
-    '지침': '📌', '판례': '⚖️', '해석례': '💬', '행정심판': '🏛',
-  };
-
-  function renderLawResults(data) {
-    _lawSearchResults = data;  // 보고서 생성용 저장
-    document.getElementById('law-report-form').style.display = 'block';
-    const area = document.getElementById('law-results-area');
-    const { query, results } = data;
-    let totalFound = 0;
-
-    const sections = LAW_SECTION_ORDER.map(key => {
-      const r = results[key] || {};
-      const cnt = parseInt(r.total || '0', 10);
-      totalFound += cnt;
-      return { key, r, cnt };
-    });
-
-    let html = `<div style="font-size:13px;color:var(--sub);margin-bottom:12px;">
-      "<strong style="color:var(--text)">${escHtml(query)}</strong>" 검색 결과 —
-      총 ${totalFound.toLocaleString()}건
-    </div><div class="law-results">`;
-
-    for (const { key, r, cnt } of sections) {
-      const icon = LAW_SECTION_ICONS[key] || '📄';
-      const badgeClass = cnt === 0 ? 'badge zero' : 'badge';
-      const sectionId  = 'ls-' + key;
-
-      html += `<div class="law-section">
-        <div class="law-section-header" onclick="toggleSection('${sectionId}')">
-          <span>${icon} ${key}</span>
-          <span class="${badgeClass}">${cnt > 0 ? cnt.toLocaleString() + '건' : '없음'}</span>
-        </div>
-        <div class="law-section-body collapsible" id="${sectionId}">`;
-
-      if (r.error) {
-        html += `<div class="law-empty" style="color:#b91c1c;">오류: ${escHtml(r.error)}</div>`;
-      } else if (!r.items || r.items.length === 0) {
-        html += `<div class="law-empty">검색 결과가 없습니다.</div>`;
-      } else {
-        for (const item of r.items) {
-          html += renderLawItem(key, item);
-        }
-        if (cnt > r.items.length) {
-          html += `<div class="law-empty" style="color:var(--accent);">+ ${(cnt - r.items.length).toLocaleString()}건 더 있습니다 (법제처에서 확인)</div>`;
-        }
-      }
-
-      html += `</div></div>`;
-    }
-
-    html += '</div>';
-    area.innerHTML = html;
-  }
-
-  function renderLawItem(category, item) {
-    let title = '', meta = [], excerpt = '', link = '';
-
-    if (category === '법령') {
-      title = item['법령명'] || item['법령명한글'] || '';
-      link  = item['법령상세링크'] || '';
-      meta  = [item['법령구분명'], item['소관부처명'], item['시행일자'] ? '시행 ' + item['시행일자'] : ''].filter(Boolean);
-    } else if (['훈령','예규','고시','지침'].includes(category)) {
-      title = item['행정규칙명'] || '';
-      link  = item['행정규칙상세링크'] || '';
-      meta  = [item['행정규칙종류'], item['발령기관명'], item['발령일자'] ? '발령 ' + item['발령일자'] : ''].filter(Boolean);
-    } else if (category === '판례') {
-      title = item['사건명'] || '';
-      link  = item['판례상세링크'] || '';
-      meta  = [item['법원명'], item['사건번호'], item['선고일자'] ? '선고 ' + item['선고일자'] : '', item['판결유형']].filter(Boolean);
-    } else if (category === '해석례') {
-      title = item['안건명'] || '';
-      link  = item['법령해석례상세링크'] || '';
-      meta  = [item['회신기관명'], item['안건번호'], item['회신일자'] ? '회신 ' + item['회신일자'] : '', item['소관부처명']].filter(Boolean);
-      excerpt = (item['질의요지'] || '').slice(0, 120);
-    } else if (category === '행정심판') {
-      title = item['사건명'] || '';
-      link  = item['행정심판례상세링크'] || '';
-      meta  = [item['재결청'], item['사건번호'], item['의결일자'] ? '의결 ' + item['의결일자'] : '', item['재결구분명']].filter(Boolean);
-    }
-
-    const titleHtml = link
-      ? `<a href="${escHtml(link)}" target="_blank">${escHtml(title) || '(제목 없음)'}</a>`
-      : escHtml(title) || '(제목 없음)';
-
-    return `<div class="law-item">
-      <div class="law-item-title">${titleHtml}</div>
-      ${meta.length ? `<div class="law-item-meta">${meta.map(escHtml).join(' · ')}</div>` : ''}
-      ${excerpt ? `<div class="law-item-excerpt">${escHtml(excerpt)}…</div>` : ''}
-    </div>`;
-  }
-
-  function toggleSection(id) {
-    document.getElementById(id).classList.toggle('collapsed');
-  }
-
-  // ── 법령 분석: 검색 결과 저장소 (보고서 생성용)
-  let _lawSearchResults = null;
-
-  // ── 법령 분석: 보고서 생성
   async function generateLawReport() {
-    if (!_lawSearchResults) { showToast('먼저 법령 검색을 실행하세요.', 'error'); return; }
     const title = document.getElementById('lr-title').value.trim();
     if (!title) { showToast('보고서 제목을 입력하세요.', 'error'); return; }
 
     const btn = document.getElementById('btn-law-report');
     btn.disabled = true;
     btn.textContent = '생성 중...';
-
-    const { results } = _lawSearchResults;
-
-    // 각 카테고리에서 항목 추출
-    const getItems = (key) => (results[key] || {}).items || [];
 
     const fd = new FormData();
     fd.append('title',           title);
@@ -823,14 +720,11 @@
     fd.append('background',      document.getElementById('lr-background').value.trim());
     fd.append('opinion',         document.getElementById('lr-opinion').value.trim());
     fd.append('conclusion',      document.getElementById('lr-conclusion').value.trim());
-    fd.append('laws',            JSON.stringify(getItems('법령')));
-    fd.append('admin_rules',     JSON.stringify([
-      ...getItems('훈령'), ...getItems('예규'),
-      ...getItems('고시'), ...getItems('지침'),
-    ]));
-    fd.append('precedents',      JSON.stringify(getItems('판례')));
-    fd.append('interpretations', JSON.stringify(getItems('해석례')));
-    fd.append('appeals',         JSON.stringify(getItems('행정심판')));
+    fd.append('laws',            JSON.stringify(textToItems('lr-laws', '법령명')));
+    fd.append('admin_rules',     JSON.stringify(textToItems('lr-adminrules', '행정규칙명')));
+    fd.append('precedents',      JSON.stringify(textToItems('lr-precedents', '사건명')));
+    fd.append('interpretations', JSON.stringify(textToItems('lr-interpretations', '안건명')));
+    fd.append('appeals',         JSON.stringify(textToItems('lr-appeals', '사건명')));
 
     try {
       const res = await fetch('/generate/law_review', { method: 'POST', body: fd });
@@ -848,7 +742,7 @@
       a.href = url; a.download = filename;
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
-      showToast('✅ ' + filename + ' 다운로드 완료', 'success');
+      showToast('다운로드 완료: ' + filename, 'success');
     } catch(e) {
       showToast('네트워크 오류: ' + e.message, 'error');
     } finally {
