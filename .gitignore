@@ -1,8 +1,10 @@
+node_modules/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .env
+.mcp.json
 *.egg-info/
 dist/
 build/

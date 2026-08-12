@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "korean-law": {
+      "type": "stdio",
+      "command": "bash",
+      "args": ["/home/user/-/korean-law-mcp/start.sh"],
+      "env": {
+        "LAW_OC": "leeseungback_0927"
+      }
+    }
+  }
+}

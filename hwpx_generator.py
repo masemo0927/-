@@ -397,6 +397,214 @@ def build_seminar_report(data):
     return b.to_xml()
 
 
+def build_law_review_report(data):
+    """법령 검토 보고서 (법령·행정규칙·판례·해석례 분석 결과 포함)"""
+    b = ParagraphBuilder()
+    b.title(data.get('title', '법령 검토 보고'))
+    b.date_line(
+        f"{data.get('date', '')}  {data.get('team', '')} "
+        f"{data.get('person', '')} ☎ {data.get('phone', '')}"
+    )
+    b.empty()
+
+    # 검토배경
+    if data.get('background'):
+        b.section("□ 검토배경")
+        for line in _split_lines(data['background']):
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 관련 법령
+    laws = data.get('laws', [])
+    if laws:
+        b.section("□ 관련 법령")
+        for law in laws:
+            name = law.get('법령명') or law.get('법령명한글', '')
+            dept = law.get('소관부처명', '')
+            kind = law.get('법령구분명', '')
+            date_ = law.get('시행일자', '')
+            meta = '  |  '.join(filter(None, [kind, dept, f"시행 {date_}" if date_ else '']))
+            b.item(f"○ {name}")
+            if meta:
+                b.sub_item(f"- {meta}")
+        b.empty()
+
+    # 행정규칙 (훈령·예규·고시·지침)
+    admin_rules = data.get('admin_rules', [])
+    if admin_rules:
+        b.section("□ 관련 행정규칙 (훈령·예규·고시·지침)")
+        for rule in admin_rules:
+            name = rule.get('행정규칙명', '')
+            kind = rule.get('행정규칙종류', '')
+            org  = rule.get('발령기관명', '') or rule.get('소관부처명', '')
+            date_ = rule.get('발령일자', '')
+            meta = '  |  '.join(filter(None, [kind, org, f"발령 {date_}" if date_ else '']))
+            b.item(f"○ {name}")
+            if meta:
+                b.sub_item(f"- {meta}")
+        b.empty()
+
+    # 판례
+    precedents = data.get('precedents', [])
+    if precedents:
+        b.section("□ 관련 판례")
+        for p in precedents:
+            name   = p.get('사건명', '')
+            court  = p.get('법원명', '')
+            num    = p.get('사건번호', '')
+            date_  = p.get('선고일자', '')
+            ptype  = p.get('판결유형', '')
+            meta = '  |  '.join(filter(None, [court, num, f"선고 {date_}" if date_ else '', ptype]))
+            b.item(f"○ {name}")
+            if meta:
+                b.sub_item(f"- {meta}")
+        b.empty()
+
+    # 해석례
+    interpretations = data.get('interpretations', [])
+    if interpretations:
+        b.section("□ 관련 법령해석례")
+        for interp in interpretations:
+            name   = interp.get('안건명', '')
+            org    = interp.get('회신기관명', '') or interp.get('소관부처명', '')
+            num    = interp.get('안건번호', '')
+            date_  = interp.get('회신일자', '')
+            excerpt = (interp.get('질의요지') or interp.get('회답') or '')[:60]
+            meta = '  |  '.join(filter(None, [org, num, f"회신 {date_}" if date_ else '']))
+            b.item(f"○ {name}")
+            if meta:
+                b.sub_item(f"- {meta}")
+            if excerpt:
+                b.sub_item(f"- (요지) {excerpt}{'…' if len(interp.get('질의요지','')) > 60 else ''}")
+        b.empty()
+
+    # 행정심판
+    appeals = data.get('appeals', [])
+    if appeals:
+        b.section("□ 관련 행정심판례")
+        for ap in appeals:
+            name  = ap.get('사건명', '')
+            organ = ap.get('재결청', '')
+            num   = ap.get('사건번호', '')
+            date_ = ap.get('의결일자', '')
+            kind  = ap.get('재결구분명', '')
+            meta = '  |  '.join(filter(None, [organ, num, f"의결 {date_}" if date_ else '', kind]))
+            b.item(f"○ {name}")
+            if meta:
+                b.sub_item(f"- {meta}")
+        b.empty()
+
+    # 검토의견
+    if data.get('opinion'):
+        b.section("□ 검토의견")
+        for line in _split_lines(data['opinion']):
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 결론
+    if data.get('conclusion'):
+        b.section("□ 결론")
+        for line in _split_lines(data['conclusion']):
+            b.item(f"○ {line}")
+        b.empty()
+
+    b.attachment()
+    b.ending()
+    return b.to_xml()
+
+
+def build_incident_report(data):
+    """사고 경위 및 재발방지 대책 보고서"""
+    b = ParagraphBuilder()
+    b.title(data.get('title', '사고 경위 및 재발방지 대책 보고'))
+    b.date_line(
+        f"{data.get('date', '')}  {data.get('team', '')} "
+        f"{data.get('person', '')} ☎ {data.get('phone', '')}"
+    )
+    b.empty()
+
+    # 사고 개요
+    overview = data.get('overview', [])
+    if overview:
+        b.section("□ 사고 개요")
+        for line in overview:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 사고 경위
+    process = data.get('process', [])
+    if process:
+        b.section("□ 사고 경위")
+        for line in process:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 피해 현황
+    damage = data.get('damage', [])
+    if damage:
+        b.section("□ 피해 현황")
+        for line in damage:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 원인 분석
+    cause = data.get('cause', [])
+    if cause:
+        b.section("□ 원인 분석")
+        for line in cause:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 문제점
+    issues = data.get('issues', [])
+    if issues:
+        b.section("□ 문제점")
+        for line in issues:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 관련 법령
+    laws = data.get('laws', [])
+    if laws:
+        b.section("□ 관련 법령 및 규정")
+        for line in laws:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 재발방지 대책
+    measures = data.get('measures', [])
+    if measures:
+        b.section("□ 재발방지 대책")
+        for i, m in enumerate(measures, 1):
+            if isinstance(m, dict):
+                b.item(f"○ [{i}] {m.get('title', '')}")
+                for detail in m.get('details', []):
+                    b.sub_item(f"- {detail}")
+            else:
+                b.item(f"○ {m}")
+        b.empty()
+
+    # 향후 일정
+    schedule = data.get('schedule', [])
+    if schedule:
+        b.section("□ 향후 추진 일정")
+        for line in schedule:
+            b.item(f"○ {line}")
+        b.empty()
+
+    # 특이사항
+    notes = data.get('notes', '')
+    if notes:
+        b.section("□ 특이사항")
+        for line in _split_lines(notes):
+            b.item(f"○ {line}")
+        b.empty()
+
+    b.attachment()
+    b.ending()
+    return b.to_xml()
+
+
 def _split_lines(text):
     """줄바꿈 기준으로 분리, 빈 줄 제거"""
     if not text:
@@ -409,17 +617,21 @@ def _split_lines(text):
 # ─────────────────────────────────────────────
 
 REPORT_BUILDERS = {
-    'review':     build_review_report,
-    'plan':       build_plan_report,
-    'inspection': build_inspection_report,
-    'seminar':    build_seminar_report,
+    'review':      build_review_report,
+    'plan':        build_plan_report,
+    'inspection':  build_inspection_report,
+    'seminar':     build_seminar_report,
+    'law_review':  build_law_review_report,
+    'incident':    build_incident_report,
 }
 
 REPORT_NAMES = {
-    'review':     '검토보고',
-    'plan':       '계획보고',
-    'inspection': '현장점검보고',
-    'seminar':    '세미나행사개최계획',
+    'review':      '검토보고',
+    'plan':        '계획보고',
+    'inspection':  '현장점검보고',
+    'seminar':     '세미나행사개최계획',
+    'law_review':  '법령검토보고',
+    'incident':    '사고경위및재발방지대책보고',
 }
 
 

@@ -7,6 +7,49 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  /* ── 법령 분석 전용 스타일 */
+  .law-search-bar { display: flex; gap: 10px; margin-bottom: 18px; }
+  .law-search-bar input { flex: 1; border: 1.5px solid var(--border); border-radius: 6px; padding: 10px 14px; font-size: 14px; font-family: inherit; }
+  .law-search-bar input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(46,123,232,.12); }
+  .btn-search {
+    padding: 10px 22px; background: linear-gradient(135deg, var(--primary), var(--accent));
+    color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; transition: opacity .15s;
+  }
+  .btn-search:hover { opacity: .9; }
+  .btn-search:disabled { opacity: .5; cursor: not-allowed; }
+  .law-api-notice { font-size: 12px; color: #b45309; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; display: none; }
+  .law-api-notice.show { display: block; }
+  .law-api-row { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
+  .law-api-row input { flex: 1; border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: monospace; }
+  .law-results { display: flex; flex-direction: column; gap: 18px; margin-top: 8px; }
+  .law-section { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .law-section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; background: #f0f4fb; cursor: pointer; user-select: none;
+    font-weight: 700; font-size: 14px; color: var(--primary);
+    border-bottom: 1px solid var(--border);
+  }
+  .law-section-header .badge {
+    background: var(--accent); color: #fff; border-radius: 12px;
+    padding: 2px 10px; font-size: 12px; font-weight: 600;
+  }
+  .law-section-header .badge.zero { background: #94a3b8; }
+  .law-section-body { padding: 0; }
+  .law-item { padding: 12px 16px; border-bottom: 1px solid #eef1f8; font-size: 13px; }
+  .law-item:last-child { border-bottom: none; }
+  .law-item-title { font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .law-item-title a { color: var(--primary); text-decoration: none; }
+  .law-item-title a:hover { text-decoration: underline; }
+  .law-item-meta { color: var(--sub); font-size: 12px; display: flex; flex-wrap: wrap; gap: 10px; }
+  .law-item-excerpt { margin-top: 6px; color: #374151; font-size: 12px; line-height: 1.6; border-left: 3px solid #d1d5db; padding-left: 10px; }
+  .law-empty { padding: 14px 16px; color: var(--sub); font-size: 13px; }
+  .law-loading { text-align: center; padding: 32px; color: var(--sub); font-size: 14px; }
+  .spinner { display: inline-block; width: 22px; height: 22px; border: 3px solid #e0e7ff; border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; margin-right: 8px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .collapsible { display: block; }
+  .collapsible.collapsed { display: none; }
+
   :root {
     --primary:  #1a4fa0;
     --accent:   #2e7be8;
@@ -251,6 +294,7 @@
     <button class="tab-btn"        onclick="switchTab('plan')">계획 보고</button>
     <button class="tab-btn"        onclick="switchTab('inspection')">현장점검 보고</button>
     <button class="tab-btn"        onclick="switchTab('seminar')">세미나/행사 개최 계획</button>
+    <button class="tab-btn"        onclick="switchTab('lawsearch')">⚖️ 법령 분석</button>
   </div>
 
   <!-- ══════════════════════════════════════
@@ -531,12 +575,116 @@
     </div>
   </div>
 
+  <!-- ══════════════════════════════════════
+       탭 5: 법령 검토 보고서
+  ══════════════════════════════════════ -->
+  <div class="tab-panel" id="panel-lawsearch">
+    <div class="card">
+      <h2>⚖️ 법령 검토 보고서 작성</h2>
+
+      <!-- 사용 안내 -->
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;margin-bottom:20px;font-size:13px;line-height:1.8;">
+        <strong style="color:#1d4ed8;">💡 사용 방법 (Claude Code 웹 환경)</strong><br>
+        ① Claude에게 법령 질문 → ② 분석 결과를 아래 양식에 입력 → ③ HWPX 보고서 자동 생성<br>
+        <span style="color:#6b7280;">예) "공영주차장 P-sign 철거공사 시 저촉되는 법령과 판례를 분석해줘"</span>
+      </div>
+
+      <!-- 보고서 기본 정보 -->
+      <div class="section-label" style="margin-top:0;">기본 정보</div>
+      <div class="row">
+        <div class="field" style="flex:3">
+          <label>보고서 제목 *</label>
+          <input type="text" id="lr-title" placeholder="예) 공영주차장 P-sign 철거공사 법령 검토 보고">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>날짜</label><input type="text" id="lr-date" placeholder="예) '25.06.10.(화)"></div>
+        <div class="field"><label>팀명</label><input type="text" id="lr-team" placeholder="예) 시설관리팀"></div>
+        <div class="field"><label>담당자</label><input type="text" id="lr-person" placeholder="예) 홍길동"></div>
+        <div class="field"><label>전화</label><input type="text" id="lr-phone" placeholder="예) 044-000-0000"></div>
+      </div>
+
+      <!-- 검토배경 -->
+      <div class="section-label">검토배경</div>
+      <div class="row">
+        <div class="field">
+          <label>검토배경 (줄바꿈으로 항목 구분)</label>
+          <textarea id="lr-background" rows="3" placeholder="예) 강풍·진동에 의한 부착물 이탈 및 중대재해 발생 우려&#10;시민 안전 확보를 위한 선제적 시설물 안전조치 필요"></textarea>
+        </div>
+      </div>
+
+      <!-- 관련 법령 -->
+      <div class="section-label">📜 관련 법령 <small style="font-weight:400;color:var(--sub);margin-left:6px;">한 줄에 하나씩 입력</small></div>
+      <div class="row">
+        <div class="field">
+          <label>법률·시행령·시행규칙 (줄바꿈으로 구분)</label>
+          <textarea id="lr-laws" rows="4" placeholder="예) 산업안전보건법 제38조 (안전조치)&#10;건설기술진흥법 제62조 (건설공사 안전관리)&#10;옥외광고물 등의 관리와 옥외광고산업 진흥에 관한 법률 제8조"></textarea>
+        </div>
+      </div>
+
+      <!-- 행정규칙 -->
+      <div class="section-label">📋 관련 행정규칙 <small style="font-weight:400;color:var(--sub);margin-left:6px;">훈령·예규·고시·지침</small></div>
+      <div class="row">
+        <div class="field">
+          <label>훈령·예규·고시·지침 (줄바꿈으로 구분)</label>
+          <textarea id="lr-adminrules" rows="3" placeholder="예) 산업안전보건기준에 관한 규칙 제14조 (추락에 의한 위험 방지)&#10;건설공사 안전관리 업무수행 지침 (국토부고시)"></textarea>
+        </div>
+      </div>
+
+      <!-- 판례 -->
+      <div class="section-label">⚖️ 관련 판례</div>
+      <div class="row">
+        <div class="field">
+          <label>판례 (줄바꿈으로 구분)</label>
+          <textarea id="lr-precedents" rows="3" placeholder="예) 대법원 2021도12345 — 철거공사 중 안전조치 미이행 업무상과실치사&#10;서울고등법원 2020나56789 — 옥외광고물 낙하 손해배상"></textarea>
+        </div>
+      </div>
+
+      <!-- 법령해석례 -->
+      <div class="section-label">💬 법령해석례 · 행정해석</div>
+      <div class="row">
+        <div class="field">
+          <label>해석례·행정해석 (줄바꿈으로 구분)</label>
+          <textarea id="lr-interpretations" rows="3" placeholder="예) 법제처 해석 — 공작물 철거 시 안전관리 의무 범위 (2022.03.)&#10;고용부 행정해석 — 수급인의 안전보건조치 적용 기준"></textarea>
+        </div>
+      </div>
+
+      <!-- 행정심판례 -->
+      <div class="section-label">🏛 행정심판례</div>
+      <div class="row">
+        <div class="field">
+          <label>행정심판례 (줄바꿈으로 구분)</label>
+          <textarea id="lr-appeals" rows="2" placeholder="예) 중앙행정심판위원회 — 옥외광고물 철거명령 처분 취소 청구 기각 (2021)"></textarea>
+        </div>
+      </div>
+
+      <!-- 검토의견 & 결론 -->
+      <div class="section-label">검토의견 및 결론</div>
+      <div class="row">
+        <div class="field">
+          <label>검토의견 (줄바꿈으로 항목 구분)</label>
+          <textarea id="lr-opinion" rows="4" placeholder="Claude 분석 결과를 여기에 붙여넣기 하세요.&#10;줄바꿈 시 ○ 항목으로 분리됩니다."></textarea>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>결론 (줄바꿈으로 항목 구분)</label>
+          <textarea id="lr-conclusion" rows="3" placeholder="예) 관련 법령에 따라 철거 전 안전점검 및 안전계획서 수립 필요&#10;산업안전보건법상 안전조치 이행 후 공사 진행 권고"></textarea>
+        </div>
+      </div>
+
+      <button class="btn-generate" id="btn-law-report" onclick="generateLawReport()">
+        📥 법령검토 보고서 HWPX 생성
+      </button>
+    </div>
+  </div>
+
 </main>
 
 <div id="toast"></div>
 
 <script>
-  const TAB_IDS = ['review', 'plan', 'inspection', 'seminar'];
+  const TAB_IDS = ['review', 'plan', 'inspection', 'seminar', 'lawsearch'];
   const tabBtns = document.querySelectorAll('.tab-btn');
 
   // ── 탭 전환
@@ -545,6 +693,66 @@
       document.getElementById('panel-' + t).classList.toggle('active', t === id);
       tabBtns[i].classList.toggle('active', t === id);
     });
+  }
+
+  // ── 법령 검토 보고서: 텍스트 입력 → HWPX 생성
+  function textToItems(textareaId, nameField) {
+    const val = document.getElementById(textareaId).value.trim();
+    if (!val) return [];
+    return val.split('\n').map(line => line.trim()).filter(Boolean)
+              .map(line => ({ [nameField]: line }));
+  }
+
+  async function generateLawReport() {
+    const title = document.getElementById('lr-title').value.trim();
+    if (!title) { showToast('보고서 제목을 입력하세요.', 'error'); return; }
+
+    const btn = document.getElementById('btn-law-report');
+    btn.disabled = true;
+    btn.textContent = '생성 중...';
+
+    const fd = new FormData();
+    fd.append('title',           title);
+    fd.append('date',            document.getElementById('lr-date').value.trim());
+    fd.append('team',            document.getElementById('lr-team').value.trim());
+    fd.append('person',          document.getElementById('lr-person').value.trim());
+    fd.append('phone',           document.getElementById('lr-phone').value.trim());
+    fd.append('background',      document.getElementById('lr-background').value.trim());
+    fd.append('opinion',         document.getElementById('lr-opinion').value.trim());
+    fd.append('conclusion',      document.getElementById('lr-conclusion').value.trim());
+    fd.append('laws',            JSON.stringify(textToItems('lr-laws', '법령명')));
+    fd.append('admin_rules',     JSON.stringify(textToItems('lr-adminrules', '행정규칙명')));
+    fd.append('precedents',      JSON.stringify(textToItems('lr-precedents', '사건명')));
+    fd.append('interpretations', JSON.stringify(textToItems('lr-interpretations', '안건명')));
+    fd.append('appeals',         JSON.stringify(textToItems('lr-appeals', '사건명')));
+
+    try {
+      const res = await fetch('/generate/law_review', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: '서버 오류' }));
+        showToast(err.error || '오류 발생', 'error'); return;
+      }
+      const disp = res.headers.get('Content-Disposition') || '';
+      let filename = 'law_review.hwpx';
+      const m = disp.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i);
+      if (m) filename = decodeURIComponent(m[1]);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      showToast('다운로드 완료: ' + filename, 'success');
+    } catch(e) {
+      showToast('네트워크 오류: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '📥 법령검토 보고서 HWPX 생성';
+    }
+  }
+
+  function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   // ── 검토 보고: 항목 동적 추가/삭제
