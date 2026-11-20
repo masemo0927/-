@@ -23,7 +23,7 @@ from flask import Flask, render_template, request, send_file, jsonify
 import io
 import json
 import os
-from hwpx_generator import generate_hwpx, make_filename
+from hwpx_generator import generate_hwpx, make_filename, build_html_preview
 
 # 저장 경로 설정 로드
 _cfg_path = os.path.join(os.path.dirname(__file__), 'config.json')
@@ -42,6 +42,35 @@ def index():
     return render_template('index.html')
 
 
+def _parse_form(report_type, form):
+    data = form.to_dict()
+    if report_type == 'review':
+        items, idx = [], 0
+        while True:
+            kt = f'item_title_{idx}'; kc = f'item_content_{idx}'
+            if kt not in data and kc not in data:
+                break
+            items.append({'title': data.pop(kt, ''), 'content': data.pop(kc, '')})
+            idx += 1
+        data['items'] = items
+    return data
+
+
+@app.route('/preview/<report_type>', methods=['POST'])
+def preview(report_type):
+    """보고서 HTML 미리보기 반환"""
+    valid_types = ('review', 'plan', 'inspection', 'seminar')
+    if report_type not in valid_types:
+        return jsonify({'error': '잘못된 보고서 유형입니다.'}), 400
+    data = _parse_form(report_type, request.form)
+    try:
+        html = build_html_preview(report_type, data)
+        filename = make_filename(report_type, data)
+        return jsonify({'html': html, 'filename': filename})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/generate/<report_type>', methods=['POST'])
 def generate(report_type):
     """hwpx 파일 생성 및 다운로드"""
@@ -49,23 +78,7 @@ def generate(report_type):
     if report_type not in valid_types:
         return jsonify({'error': '잘못된 보고서 유형입니다.'}), 400
 
-    # 동적 항목(검토 보고) 처리
-    data = request.form.to_dict()
-
-    if report_type == 'review':
-        items = []
-        idx = 0
-        while True:
-            key_title   = f'item_title_{idx}'
-            key_content = f'item_content_{idx}'
-            if key_title not in data and key_content not in data:
-                break
-            items.append({
-                'title':   data.pop(key_title, ''),
-                'content': data.pop(key_content, ''),
-            })
-            idx += 1
-        data['items'] = items
+    data = _parse_form(report_type, request.form)
 
     try:
         hwpx_bytes = generate_hwpx(report_type, data)

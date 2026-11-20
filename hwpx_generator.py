@@ -472,6 +472,90 @@ def generate_hwpx(report_type, data):
     return buf.getvalue()
 
 
+def build_html_preview(report_type, data):
+    """보고서 내용을 한글 공문서 스타일 HTML로 반환"""
+    lines = []
+
+    def esc(t):
+        return xml_escape(t) if t else ''
+
+    def add(tag, cls, text):
+        lines.append(f'<{tag} class="{cls}">{esc(text)}</{tag}>')
+
+    title = data.get('title', '')
+    date_line = f"{data.get('date','')}  {data.get('team','')} {data.get('person','')} {data.get('phone','')}"
+
+    lines.append(f'<h1 class="rpt-title">{esc(title)}</h1>')
+    lines.append(f'<p class="rpt-dateline">{esc(date_line.strip())}</p>')
+    lines.append('<hr class="rpt-rule"/>')
+
+    def section(text):
+        lines.append(f'<p class="rpt-section">{esc(text)}</p>')
+
+    def item(text):
+        lines.append(f'<p class="rpt-item">{esc(text)}</p>')
+
+    def sub(text):
+        lines.append(f'<p class="rpt-sub">{esc(text)}</p>')
+
+    def block(field, heading):
+        val = data.get(field, '')
+        if not val:
+            return
+        section(heading)
+        for ln in _split_lines(val):
+            item(f'○ {ln}')
+        lines.append('<div class="rpt-gap"></div>')
+
+    if report_type == 'plan':
+        block('background', '□ 추진배경')
+        block('purpose',    '□ 추진목적')
+        block('current_status', '□ 현황')
+        section('□ 추진계획')
+        if data.get('period'):  item(f'○ 기간 : {data["period"]}')
+        if data.get('target'):  item(f'○ 대상 : {data["target"]}')
+        if data.get('content'):
+            item('○ 내용')
+            for ln in _split_lines(data['content']): sub(f'- {ln}')
+        if data.get('budget'):  item(f'○ 예산 : {data["budget"]}')
+        lines.append('<div class="rpt-gap"></div>')
+        block('effect',   '□ 기대효과')
+        block('schedule', '□ 향후일정')
+
+    elif report_type == 'review':
+        block('background', '□ 검토배경')
+        items = data.get('items', [])
+        if items:
+            section('□ 검토결과')
+            for it in items:
+                if it.get('title'): item(f'○ {it["title"]}')
+                for ln in _split_lines(it.get('content', '')): sub(f'- {ln}')
+            lines.append('<div class="rpt-gap"></div>')
+        block('conclusion', '□ 결론')
+
+    elif report_type == 'inspection':
+        section('□ 점검 개요')
+        if data.get('inspection_date'): item(f'○ 일 시 : {data["inspection_date"]}')
+        if data.get('location'):        item(f'○ 장 소 : {data["location"]}')
+        lines.append('<div class="rpt-gap"></div>')
+        block('results', '□ 점검결과')
+        block('actions', '□ 조치사항')
+
+    elif report_type == 'seminar':
+        section('□ 행사 개요')
+        if data.get('event_name'): item(f'○ 행사명 : {data["event_name"]}')
+        if data.get('event_date'): item(f'○ 일   시 : {data["event_date"]}')
+        if data.get('venue'):      item(f'○ 장   소 : {data["venue"]}')
+        lines.append('<div class="rpt-gap"></div>')
+        block('main_content', '□ 주요내용')
+        block('budget', '□ 예산')
+
+    lines.append('<p class="rpt-attach">붙임  관련자료 1부.</p>')
+    lines.append('<p class="rpt-end">세종시설관리공단  끝.</p>')
+
+    return '\n'.join(lines)
+
+
 def make_filename(report_type, data):
     from datetime import datetime
     today = datetime.now().strftime('%Y%m%d')
